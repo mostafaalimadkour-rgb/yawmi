@@ -164,6 +164,13 @@ summary{cursor:pointer}
 .sch-it.done .t{text-decoration:line-through;opacity:.55}
 .sch-it .side{display:grid;gap:4px;justify-items:end}
 .sch-it .chip{background:var(--bg)}
+.sch-it .chip.ok{background:color-mix(in srgb,var(--good) 18%,transparent)}
+.sch-it .chip.wait{background:color-mix(in srgb,var(--warn) 18%,transparent)}
+.sch-it .chip.no{background:color-mix(in srgb,var(--bad) 15%,transparent)}
+.sch-it .st{display:block;margin-top:4px}
+.sch-ap{margin-top:4px;font-size:1.05rem}
+[dir=rtl] .sch-ap{text-align:right}
+.sch-ck.wait{background:color-mix(in srgb,var(--cc) 22%,transparent);font-size:1rem}
 [dir=rtl] .sch-it .t,[dir=rtl] .sch-it .n,[dir=rtl] .sch-tip{text-align:right}
 .sch-tip{background:#FFF3C4;color:#5B3BA8;border-radius:16px;padding:12px 16px;font-weight:700;margin-top:18px}
 .sch-card{display:block;width:100%;text-align:start;margin-top:12px;border-inline-start:8px solid #6F42C1}
@@ -343,7 +350,7 @@ function prepare(){
   if(!S.ver){S.ver=3;const fresh=seed().tasks,has=ti=>S.tasks.some(t=>t.title===ti);
     ['الذهاب للمدرسة','الاستعداد للتمرين','قصة قبل النوم','سماع الكلام والاتزان'].forEach(ti=>{if(!has(ti))S.tasks.push(fresh.find(t=>t.title===ti))});
     const dr=S.tasks.find(t=>t.title==='لبس المدرسة وتجهيز الشنطة');if(dr&&!dr.speed){dr.speed=10;dr.speedPts=5}}
-  if(S.ver<4)upg4();if(S.ver<5)upg5();if(S.ver<6)upg6();
+  if(S.ver<4)upg4();if(S.ver<5)upg5();if(S.ver<6)upg6();if(S.ver<7)upg7();if(S.ver<8){S.expFrom??=Date.now();S.ver=8}
   S.chat??={};S.meal??={amount:150,pct:75,day:4,paid:{}};S.meal.paid??={};S.school??={};S.schMeta??={};
   S.kids.forEach(k=>{if(k['photo']){S.photos[k.id]??=k['photo'];delete k['photo']}});
   delete S['notified'];delete S['sender'];delete S['lang'];
@@ -377,6 +384,35 @@ function upg6(){S.school??={};S.schMeta??={};const kid=S.kids.some(k=>k.id==='k2
     I('11','hw','Social Studies - Interactive Assignment','واجب تفاعلي');
     S.schMeta[kid]??={grade:'Year 3',tip:''}}
   S.ver=6}
+/* ---------- missed tasks: points deducted when the time passes ----------
+   Same result on every device: the status + a history entry stamped with the deadline,
+   so two phones open at once do not deduct twice. */
+const dayStart=d=>{const x=new Date(d);x.setHours(0,0,0,0);return x.getTime()};
+const deadlineOf=(t,d)=>dayStart(d)+(m(T(t,d))+t.dur)*60000;
+function schDeadline(x){const d=ymd(x.wk);d.setHours(0,0,0,0);d.setDate(d.getDate()+(x.day==null?5:x.day+1));return d.getTime()}
+function penal(kid,p,reason,d,ts){const k=kidById(kid);if(!k)return;k.points=Math.max(0,k.points-p);S.history.push({d,ts,kid,pts:-p,reason});if(S.history.length>1500)S.history.splice(0,500)}
+function expireTasks(){
+  if(!S||!ready||!S.expFrom)return;
+  const now=Date.now(),from=S.expFrom,mine=[];let ch=0;
+  for(let i=0;i<=2;i++){const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()-i);const key=dkey(d);
+    if(dayStart(d)+86400000<=from)continue;
+    S.kids.forEach(k=>kidTasks(k,d).forEach(t=>{const p=P(t,k.id);if(!p||t.rate||st(k.id,t.id,key))return;
+      const dl=deadlineOf(t,d);if(dl>now||dl<=from)return;
+      setSt(k.id,t.id,'expired',key);penal(k.id,p,'فاتت: '+t.title,key,dl);ch=1;if(k.id===DEV)mine.push([t.title,p])}))}
+  for(const id in S.school||{}){const x=S.school[id];if(!x.pts||!kidById(x.kid)||schSt(x))continue;
+    const dl=schDeadline(x);if(dl>now||dl<=from)continue;
+    x.done='x';x.lost=x.pts;x.dl=dl;penal(x.kid,x.pts,'📚 فاتت: '+x.title,dkey(new Date(dl-60000)),dl);ch=1;if(x.kid===DEV)mine.push([x.title,x.pts])}
+  if(ch){save();softRender();if(mine.length){const tot=mine.reduce((a,x)=>a+x[1],0);toast(mine.length===1?L(`⌛ فاتتك ${mine[0][0]} واتخصم ${tot} نقطة`,`⌛ Missed ${mine[0][0]}: −${tot} pts`):L(`⌛ فاتتك ${mine.length} مهام واتخصم ${tot} نقطة`,`⌛ Missed ${mine.length} tasks: −${tot} pts`))}}
+}
+function missedList(){const c=new Date();c.setDate(c.getDate()-2);const cut=dkey(c),o=[];
+  for(const d in S.log)if(d>=cut)for(const kid in S.log[d])for(const tid in S.log[d][kid])if(S.log[d][kid][tid]==='expired'){const t=S.tasks.find(x=>x.id===tid);if(t&&kidById(kid))o.push({d,kid,t})}
+  return o.sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:m(T(b.t))-m(T(a.t)))}
+const missedSch=()=>{const c=new Date();c.setDate(c.getDate()-2);const cut=dayStart(c);return Object.entries(S.school||{}).filter(([,x])=>x.done==='x'&&kidById(x.kid)&&(x.dl||0)>=cut).map(([id,x])=>({...x,id}))};
+function lateOk(d,kid,tid,full){const t=S.tasks.find(x=>x.id===tid);if(!t||st(kid,tid,d)!=='expired')return;const p=P(t,kid),g=full?2*p:p;
+  setSt(kid,tid,full?'done':'excused',d);addPts(kid,g,(full?'اتعملت: ':'رجوع خصم: ')+t.title);save();render();toast('+'+g+' '+L('نقطة','pts'))}
+function schLateOk(id,full){const x=S.school?.[id];if(!x||x.done!=='x')return;const back=x.lost??x.pts??0,g=back+(full?x.pts||0:0);
+  if(full){x.done=1;x.got=x.pts||0}else x.done='e';delete x.lost;addPts(x.kid,g,(full?'📚 اتعملت: ':'📚 رجوع خصم: ')+x.title);save();if(dlg.open)closeDlg();render();toast('+'+g+' '+L('نقطة','pts'))}
+function upg7(){S.school??={};for(const id in S.school){const x=S.school[id];if(x.pts==null)Object.assign(x,scDef(x.cat))}S.ver=7}
 function weekPct(k){let tot=0,done=0;for(let i=1;i<=7;i++){const d=new Date();d.setDate(d.getDate()-i);const key=dkey(d);kidTasks(k,d).filter(t=>P(t,k.id)>0).forEach(t=>{tot++;if(st(k.id,t.id,key)==='done')done++})}
   const d=new Date(),key=today();kidTasks(k,d).filter(t=>P(t,k.id)>0&&m(T(t))+t.dur<=nowM()).forEach(t=>{tot++;if(st(k.id,t.id,key)==='done')done++});
   return tot?Math.round(done/tot*100):0}
@@ -475,7 +511,7 @@ function vHome(){
   const kids=S.kids.map(k=>{const list=kidTasks(k).filter(t=>P(t,k.id)>0),done=list.filter(t=>st(k.id,t.id)==='done').length,pct=list.length?Math.round(done/list.length*100):0,R=rank(k);
     return `<button class="kid" style="--c:${k.color}" onclick="enterKid('${k.id}')">${AV(k,'av')}<span class="nm">${esc(k.name)} <span class="muted" style="font-size:.95rem;font-weight:600">${R.r[1]} ${R.r[2]}</span></span>
     <span class="meta">${unreadK(k.id)?'<span>💬 '+unreadK(k.id)+'</span>':''}<span>💰 ${k.points}</span><span>🔥 ${streak(k)}</span><span>${done}/${list.length}</span></span><span class="bar"><i style="width:${pct}%"></i></span></button>`}).join('');
-  const pc=pendingTasks().length+pendingReqs().length;
+  const pc=pendingTasks().length+pendingReqs().length+pendingSch().length;
   return `<button class="lang raw" onclick="setLang()">${L('English','عربي')}</button><h1>يومي</h1><p class="sub">${DAYS[d.getDay()]}، ${d.toLocaleDateString(L('ar-EG','en-GB'),{day:'numeric',month:'long'})}</p>
   ${arc(null)}<section class="kids">${kids}</section>
   <button class="parentBtn" onclick="pinBuf='';go('pin')">دخول الأهل${pc?`<span class="badge">${pc}</span>`:''}</button>`;
@@ -507,7 +543,7 @@ function vKid(id){
   const cur=al.find(t=>n>=m(T(t))&&n<m(T(t))+t.dur&&P(t,k.id)>0&&!st(k.id,t.id))||al.find(t=>n>=m(T(t))&&n<m(T(t))+t.dur),next=al.find(t=>m(T(t))>n);
   let now;
   if(cur){const s=st(k.id,cur.id),left=m(T(cur))+cur.dur-n,p=P(cur,k.id);
-    now=`<div class="now"><div class="lbl">دلوقتي</div><div class="big">${esc(cur.emoji)}</div><div class="ttl">${esc(cur.title)}</div><div class="when">${L(`فاضل ${left} دقيقة`,`${left} min left`)}${p?L(`، وليك ${p} نقطة`,`, worth ${p} pts`):''}${cur.bonus?L(` و${cur.bonus} زيادة لو اتميزت`,` (+${cur.bonus} if you excel)`):''}${cur.speed?L(`. لو جهزت في ${cur.speed} دقايق تاخد ${cur.speedPts} زيادة ⚡`,`. Ready within ${cur.speed} min = +${cur.speedPts} ⚡`):''}</div>
+    now=`<div class="now"><div class="lbl">دلوقتي</div><div class="big">${esc(cur.emoji)}</div><div class="ttl">${esc(cur.title)}</div><div class="when">${L(`فاضل ${left} دقيقة`,`${left} min left`)}${p?L(`، وليك ${p} نقطة`,`, worth ${p} pts`)+(!s&&!cur.rate&&S.expFrom?L(` (لو فاتت تتخصم ${p})`,` (−${p} if missed)`):''):''}${cur.bonus?L(` و${cur.bonus} زيادة لو اتميزت`,` (+${cur.bonus} if you excel)`):''}${cur.speed?L(`. لو جهزت في ${cur.speed} دقايق تاخد ${cur.speedPts} زيادة ⚡`,`. Ready within ${cur.speed} min = +${cur.speedPts} ⚡`):''}</div>
     ${s==='done'?'<div class="state">✓ عملتها، برافو!</div>':s==='pending'?'<div class="state">مستني موافقة الأهل</div>':p?actBtn(k,cur,true):''}</div>`}
   else if(next){const d=m(T(next))-n,h=Math.floor(d/60),mm=d%60;
     now=`<div class="now"><div class="lbl">اللي جاي</div><div class="big">${esc(next.emoji)}</div><div class="ttl">${esc(next.title)}</div><div class="when">${L(`الساعة ${fmt(T(next))}، بعد ${h?h+' ساعة و':''}${mm} دقيقة`,`At ${fmt(T(next))}, in ${h?h+' h ':''}${mm} min`)}</div></div>`}
@@ -517,8 +553,10 @@ function vKid(id){
     else if(!p)act='<span class="chip">بدون نقط</span>';
     else if(s==='done')act='<span class="chip ok">✓</span>';
     else if(s==='pending')act='<span class="chip wait">مستني</span>';
+    else if(s==='expired')act=`<span class="chip no" dir="ltr">−${p}</span>`;
+    else if(s==='excused')act=`<span class="chip">${L('اتسامح','Excused')}</span>`;
     else act=actBtn(k,t);
-    const note=s==='rejected'?'<span class="chip no">الأهل قالوا لسه</span>':(!s&&late&&p&&!t.rate?'<span class="chip no">فات معادها</span>':'');
+    const note=s==='rejected'?'<span class="chip no">الأهل قالوا لسه</span>':s==='expired'?`<span class="chip no">${L('فاتت واتخصمت','Missed, deducted')}</span>`:(!s&&late&&p&&!t.rate?'<span class="chip no">فات معادها</span>':'');
     return `<li class="${t===cur?'cur':''}"><span class="tm">${fmt(T(t))}</span><span class="tt">${esc(t.emoji)} ${esc(t.title)}<br><span class="pts">${p?p+' نقطة':''}${t.bonus?' + '+t.bonus+' تميّز':''}${t.speed?' + '+t.speedPts+' سرعة ⚡':''}</span> ${note}</span>${act}</li>`}).join('');
   const store=S.rewards.map(r=>{const pend=S.requests.some(q=>q.kid===k.id&&q.rid===r.id&&q.status==='pending');
     return `<div class="rw"><span class="e">${esc(r.emoji)}</span><b>${esc(r.title)}</b><span class="c">${r.num} نقطة</span>
@@ -547,7 +585,13 @@ setInterval(updTimers,1000);
 function askReward(kid,rid){S.requests.push({id:uid(),kid,rid,status:'pending',d:today()});save();render();toast('طلبك اتبعت للأهل')}
 
 /* ---------- school weekly tasks ---------- */
-const SCAT=[['proj','المشاريع','PROJECTS','#1D5FA8','📁'],['show','يوم العرض','SHOW DAY','#E07B1A','🎭'],['quiz','امتحانات','QUIZZES','#C92A5B','📝'],['hw','الواجب','HOMEWORK','#0A8A6C','📚'],['other','حاجات تانية','OTHER','#6B5B95','📌']];
+/* [key, Arabic, English, color, emoji, default points, default excellence bonus] */
+const SCAT=[['proj','المشاريع','PROJECTS','#1D5FA8','📁',20,0],['show','يوم العرض','SHOW DAY','#E07B1A','🎭',5,0],['quiz','امتحانات','QUIZZES','#C92A5B','📝',10,10],['hw','الواجب','HOMEWORK','#0A8A6C','📚',10,0],['other','حاجات تانية','OTHER','#6B5B95','📌',5,0]];
+const scDef=c=>{const r=SCAT.find(s=>s[0]===c)||SCAT[4];return{pts:r[5],bonus:r[6]}};
+/* item status: done 0 = not yet, 'p' = waiting for parents, 'r' = parents said not yet, 1 = done (got = points given) */
+const schSt=x=>x.done===1||x.done===true?'done':x.done==='p'?'wait':x.done==='r'?'no':x.done==='x'?'miss':x.done==='e'?'exc':'';
+const pendingSch=()=>Object.entries(S.school||{}).filter(([,x])=>x.done==='p'&&kidById(x.kid)).map(([id,x])=>({...x,id}));
+function schDefSet(c){const d=scDef(c);document.getElementById('scP').value=d.pts;document.getElementById('scB').value=d.bonus}
 let schOff=0,schDay='all',schBack='k';
 const ymd=s=>{const[y,mo,da]=s.split('-').map(Number);return new Date(y,mo-1,da,12)};
 /* school week = Sunday→Thursday; on Friday & Saturday the coming week shows */
@@ -562,10 +606,27 @@ const schMeta=kid=>S.schMeta?.[kid]||{};
 function schDayTxt(x){if(x.day==null)return '';const d=ymd(x.wk);d.setDate(d.getDate()+x.day);const k=dkey(d),t=new Date();t.setDate(t.getDate()+1);
   if(k===today())return L('النهارده','Today');if(k===dkey(t))return L('بكرة','Tomorrow');
   return L(DAYS[d.getDay()],DAYS_EN[d.getDay()].slice(0,3))+' '+d.toLocaleDateString(L('ar-EG','en-GB'),{day:'numeric'})}
-function schRow(x,col,who){const dt=schDayTxt(x),isT=dt===L('النهارده','Today');
-  return `<div class="sch-it ${x.done?'done':''}" style="--cc:${col}"><button class="sch-ck" aria-pressed="${!!x.done}" aria-label="${esc(x.title)}" onclick="togSch('${x.id}')">${x.done?'✓':''}</button>
-  <span class="raw"><span class="t" dir="auto">${esc(x.title)}</span>${x.note?`<span class="n" dir="auto">${esc(x.note)}</span>`:''}</span>
-  <span class="side">${dt?`<span class="chip ${isT&&!x.done?'wait':''}">${dt}</span>`:''}${who==='p'?`<button class="btn ghost" style="padding:3px 10px" onclick="editSch('${x.id}')">${L('تعديل','Edit')}</button>`:''}</span></div>`}
+function schRow(x,col,who){const dt=schDayTxt(x),isT=dt===L('النهارده','Today'),s=schSt(x),p=x.pts||0;
+  const ptsTxt=s==='done'?(x.got!=null?`<span class="chip ok" dir="ltr">✓ +${x.got}</span>`:''):s==='miss'?`<span class="chip no" dir="ltr">−${x.lost??p}</span>`:s==='exc'?'':p?`<span class="chip" dir="ltr">+${p}${x.bonus?' · 🌟+'+x.bonus:''}</span>`:'';
+  const stTxt=s==='wait'?`<span class="chip wait">${L('مستني موافقة','Awaiting approval')}</span>`:s==='no'?`<span class="chip no">${L('الأهل قالوا لسه','Parents said not yet')}</span>`:s==='miss'?`<span class="chip no">${L('فاتت واتخصمت','Missed, deducted')}</span>`:s==='exc'?`<span class="chip">${L('اتسامح','Excused')}</span>`:'';
+  return `<div class="sch-it ${s==='done'?'done':''}" style="--cc:${col}"><button class="sch-ck ${s==='wait'?'wait':''}" aria-pressed="${s==='done'}" aria-label="${esc(x.title)}" onclick="${who==='p'?'schAct':'togSch'}('${x.id}')">${s==='done'?'✓':s==='wait'?'⏳':s==='miss'?'⌛':''}</button>
+  <span><span class="raw"><span class="t" dir="auto">${esc(x.title)}</span>${x.note?`<span class="n" dir="auto">${esc(x.note)}</span>`:''}</span>${stTxt?`<span class="st">${stTxt}</span>`:''}</span>
+  <span class="side">${dt?`<span class="chip ${isT&&s!=='done'?'wait':''}">${dt}</span>`:''}${ptsTxt}${who==='p'?`<button class="btn ghost" style="padding:3px 10px" onclick="editSch('${x.id}')">${L('تعديل','Edit')}</button>`:''}</span></div>`}
+function schBtns(id,x){const p=x.pts||0,b=x.bonus||0;
+  return `<div class="row" style="margin-top:8px"><button class="btn good" onclick="okSch('${id}',1)">${L('تمام','OK')} +${p}</button>${b?`<button class="btn good" onclick="okSch('${id}',1,1)">${L('ممتاز','Excellent')} +${p+b}</button>`:''}<button class="btn warn" onclick="okSch('${id}',.5)">${L('نص النقط','Half')} +${Math.round(p/2)}</button>${x.done==='p'?`<button class="btn bad" onclick="noSch('${id}')">${L('لسه','Not yet')}</button>`:''}</div>`}
+function schAct(id){const x=S.school?.[id];if(!x)return;const k=kidById(x.kid),s=schSt(x);
+  if(s==='miss'){const b=x.lost??x.pts??0;openDlg(`<h2 class="raw" dir="auto">${esc(x.title)}</h2><p class="muted" style="margin-top:4px">${k?kidTag(k)+' · ':''}${L(`فاتت واتخصم منه ${b} نقطة`,`Missed, ${b} pts deducted`)}</p>
+    <div class="row"><button class="btn good" onclick="schLateOk('${id}',1)">${L('اتعملت فعلاً','It was done')} +${b+(x.pts||0)}</button><button class="btn ghost" onclick="schLateOk('${id}',0)">${L('رجّع الخصم بس','Refund only')} +${b}</button></div>
+    <div class="row" style="margin-top:8px"><button class="btn ghost" onclick="closeDlg()">${L('إغلاق','Close')}</button></div>`);return}
+  if(!(x.pts||0)){x.done=s==='done'?0:1;save();render();return}
+  const stt=s==='done'?L(`اتعمل واتحسب له ${x.got??0} نقطة`,`Done, got ${x.got??0} pts`):s==='wait'?L('مستني موافقتك','Waiting for your approval'):s==='no'?L('قلت له لسه','You said not yet'):L('لسه ماعلّمش عليه','Not ticked yet');
+  openDlg(`<h2 class="raw" dir="auto">${esc(x.title)}</h2><p class="muted" style="margin-top:4px">${k?kidTag(k)+' · ':''}${stt}</p>
+  ${s==='done'?`<div class="row"><button class="btn bad" onclick="undoSch('${id}')">${L('رجّعه مش متعمل','Mark not done')}${x.got?' (−'+x.got+')':''}</button><button class="btn ghost" onclick="closeDlg()">${L('إغلاق','Close')}</button></div>`
+  :`${schBtns(id,x)}<div class="row" style="margin-top:8px"><button class="btn ghost" onclick="closeDlg()">${L('إلغاء','Cancel')}</button></div>`}`)}
+function okSch(id,f,bon){const x=S.school?.[id];if(!x)return;const p=Math.round((x.pts||0)*f)+(bon?x.bonus||0:0);
+  x.done=1;x.got=p;if(p)addPts(x.kid,p,'📚 '+(f<1?'نص نقط: ':'')+x.title+(bon?' (تميّز)':''));save();if(dlg.open)closeDlg();render();toast('+'+p+' '+L('نقطة','pts'))}
+function noSch(id){const x=S.school?.[id];if(!x)return;x.done='r';save();if(dlg.open)closeDlg();render()}
+function undoSch(id){const x=S.school?.[id];if(!x)return;if(x.got)addPts(x.kid,-x.got,'إلغاء: '+x.title);x.done=0;delete x.got;save();closeDlg();render()}
 function schList(its,who){
   return SCAT.map(([c,ar,en,col,em])=>{const xs=its.filter(x=>(x.cat||'other')===c).sort(schSort);
     if(!xs.length&&(who==='k'||c==='other'))return '';
@@ -574,13 +635,13 @@ function schList(its,who){
 function schNav(){
   const mid=schOff===0?L('الأسبوع ده','This week'):schOff===1?L('الأسبوع الجاي','Next week'):schOff===-1?L('الأسبوع اللي فات','Last week'):wkLabel(schOff);
   return `<div class="row" style="margin:12px 0 4px;flex-wrap:nowrap"><button class="btn ghost" onclick="schOff--;render()">${L('→ اللي فات','← Prev')}</button><b class="grow" style="text-align:center;min-width:0">${mid}</b><button class="btn ghost" onclick="schOff++;render()">${L('الجاي ←','Next →')}</button></div>`}
-function schCard(k){const its=schItems(k.id,0),left=its.filter(x=>!x.done).sort(schSort),done=its.length-left.length,pct=its.length?Math.round(done/its.length*100):0;
-  const msg=its.length?(left.length?L(`خلصت ${done} من ${its.length}، فاضل ${left.length}`,`${done} of ${its.length} done, ${left.length} left`):L('خلصت كله، برافو! 🎉','All done, great job! 🎉')):L('لسه مفيش مهام','No tasks yet');
+function schCard(k){const its=schItems(k.id,0),left=its.filter(x=>!['done','miss','exc'].includes(schSt(x))).sort(schSort),done=its.filter(x=>schSt(x)==='done').length,pct=its.length?Math.round(done/its.length*100):0,lp=left.filter(x=>schSt(x)!=='wait').reduce((a,x)=>a+(x.pts||0),0);
+  const msg=its.length?(left.length?L(`خلصت ${done} من ${its.length}، فاضل ${left.length}`,`${done} of ${its.length} done, ${left.length} left`)+(lp?L(` وليك ${lp} نقطة`,`, ${lp} pts to earn`):''):L('خلصت كله، برافو! 🎉','All done, great job! 🎉')):L('لسه مفيش مهام','No tasks yet');
   return `<button class="card sch-card" onclick="schOff=0;schDay='all';schBack='k';go('school','${k.id}')"><div class="row"><span style="font-size:2rem">📚</span><span class="grow"><b>${L('مهام المدرسة الأسبوع ده','School tasks this week')}</b><br><span class="muted">${msg}</span></span><b style="font-size:1.5rem">${L('‹','›')}</b></div>
   ${its.length?`<div class="bar" style="margin-top:8px;--c:#6F42C1"><i style="width:${pct}%"></i></div>`:''}
-  ${left.slice(0,3).map(x=>{const dt=schDayTxt(x);return `<div class="sch-mini"><span class="raw" dir="auto">${esc(x.title)}</span>${dt?`<span class="chip ${dt===L('النهارده','Today')?'wait':''}">${dt}</span>`:''}</div>`}).join('')}</button>`}
+  ${left.slice(0,3).map(x=>{const dt=schDayTxt(x);return `<div class="sch-mini"><span class="raw" dir="auto">${esc(x.title)}</span><span>${schSt(x)==='wait'?'<span class="chip wait">⏳</span>':x.pts?`<span class="muted" style="font-size:.85rem" dir="ltr">+${x.pts}</span>`:''} ${dt?`<span class="chip ${dt===L('النهارده','Today')?'wait':''}">${dt}</span>`:''}</span></div>`}).join('')}</button>`}
 function vSchool(id){const k=kidById(id);if(!k)return vHome();
-  const all=schItems(k.id,schOff),done=all.filter(x=>x.done).length,pct=all.length?Math.round(done/all.length*100):0,sun=wkSun(schOff),M=schMeta(k.id);
+  const all=schItems(k.id,schOff),done=all.filter(x=>schSt(x)==='done').length,got=all.reduce((a,x)=>a+(schSt(x)==='done'?x.got||0:0),0),wt=all.filter(x=>schSt(x)==='wait').length,pct=all.length?Math.round(done/all.length*100):0,sun=wkSun(schOff),M=schMeta(k.id);
   const its=schDay==='all'?all:all.filter(x=>x.day===+schDay);
   const chips=[['all',L('الكل','All')],...[0,1,2,3,4].map(i=>{const d=new Date(sun);d.setDate(sun.getDate()+i);return[String(i),L(DAYS[i],DAYS_EN[i].slice(0,3))+' '+d.toLocaleDateString(L('ar-EG','en-GB'),{day:'numeric'})]})]
     .map(([v,l])=>`<button style="--c:#6F42C1" aria-pressed="${schDay===v}" onclick="schDay='${v}';render()">${l}</button>`).join('');
@@ -588,15 +649,23 @@ function vSchool(id){const k=kidById(id);if(!k)return vHome();
   return `<div style="--c:${k.color}"><div class="top"><button class="back" onclick="${schBack==='p'?"go('parent','school')":`go('kid','${k.id}')`}">${L('رجوع','Back')}</button></div>
   <div class="sch-hd"><div class="row" style="flex-wrap:nowrap"><span class="grow"><h2>${L('مهام الأسبوع','Weekly Tasks')}</h2><div class="y">${esc(k.name)}${M.grade?` · <span class="raw" dir="auto">${esc(M.grade)}</span>`:''}</div></span><span style="font-size:2.8rem;line-height:1">🎒</span></div>
   <div class="w" style="margin-top:6px">${L('الأسبوع','Week')}: ${wkLabelD(sun)}  |  ${L('علّم لما تخلص!','Check when done!')}</div>
-  ${all.length?`<div class="bar" style="margin-top:10px"><i style="width:${pct}%;background:#FFD86B"></i></div><div class="w" style="margin-top:4px">${L(`خلصت ${done} من ${all.length}`,`${done} of ${all.length} done`)}</div>`:''}</div>
+  ${all.length?`<div class="bar" style="margin-top:10px"><i style="width:${pct}%;background:#FFD86B"></i></div><div class="w" style="margin-top:4px">${L(`خلصت ${done} من ${all.length}`,`${done} of ${all.length} done`)}${got?L(` · كسبت ${got} نقطة 💰`,` · earned ${got} pts 💰`):''}${wt?L(` · ⏳ ${wt} مستني موافقة`,` · ⏳ ${wt} awaiting approval`):''}</div>`:''}</div>
   ${schNav()}<div class="kpick" style="margin-top:8px">${chips}</div>
+  ${S.expFrom&&all.some(x=>x.pts)?`<div class="muted" style="margin-top:10px;font-size:.9rem">⚠️ ${L('علّم على كل بند في يومه، واللي من غير يوم لحد الخميس. البند اللي يفوت نقطه بتتخصم من رصيدك.','Tick each item on its day; items without a day by Thursday. Missed items cost their points.')}</div>`:''}
   ${empty?`<div class="card muted" style="margin-top:14px">${empty}</div>`:schList(its,'k')}
   <div class="sch-tip ${M.tip?'raw':''}" dir="auto">💡 ${M.tip?esc(M.tip):L('ابدأ بالامتحانات، بعدين الواجب، بعدين المشاريع!','Start with Quizzes first, then Homework, then Projects!')}</div></div>`}
-function togSch(id){const x=S.school?.[id];if(!x)return;x.done=x.done?0:1;save();render();
-  if(x.done&&view.name==='school'){const all=Object.values(S.school).filter(i=>i.kid===x.kid&&i.wk===x.wk);toast(all.every(i=>i.done)?L('خلصت كل مهام الأسبوع! 🎉','All weekly tasks done! 🎉'):L('برافو! ✓','Great job! ✓'))}}
+function togSch(id){const x=S.school?.[id];if(!x)return;const s=schSt(x),p=x.pts||0;
+  if(s==='miss'){toast(L('البند ده فات واتخصمت نقطه، كلّم بابا أو ماما','This one was missed and its points deducted, talk to Dad or Mom'));return}
+  if(s==='exc'){toast(L('بابا وماما سامحوك في البند ده','Dad & Mom excused this one'));return}
+  if(s==='done'){if(p&&x.got!=null){toast(L('بابا وماما وافقوا عليها خلاص ✓','Already approved ✓'));return}x.done=0}
+  else if(s==='wait')x.done=0;
+  else x.done=p?'p':1;
+  save();render();
+  if(x.done==='p')toast(L('تمام! اتبعتت لبابا وماما يوافقوا','Done! Sent to parents for approval'));
+  else if(x.done===1){const all=Object.values(S.school).filter(i=>i.kid===x.kid&&i.wk===x.wk);toast(all.every(i=>schSt(i)==='done')?L('خلصت كل مهام الأسبوع! 🎉','All weekly tasks done! 🎉'):L('برافو! ✓','Great job! ✓'))}}
 function pSchool(){
   const pick=S.kids.map(k=>`<button style="--c:${k.color}" aria-pressed="${k.id===selKid}" onclick="selKid='${k.id}';render()">${AV(k,'mini')} ${esc(k.name)}</button>`).join('');
-  const k=kidById(selKid)||S.kids[0],its=schItems(k.id,schOff),done=its.filter(x=>x.done).length,M=schMeta(k.id);
+  const k=kidById(selKid)||S.kids[0],its=schItems(k.id,schOff),done=its.filter(x=>schSt(x)==='done').length,M=schMeta(k.id);
   return `<div class="kpick">${pick}</div>${schNav()}
   <div class="muted" style="text-align:center">${wkLabel(schOff)} · ${L(`خلّص ${done} من ${its.length}`,`${done} of ${its.length} done`)}</div>
   <button class="btn" style="width:100%;padding:12px;margin:12px 0 8px" onclick="editSch()">+ ${L('بند جديد لـ','New item for ')}${esc(k.name)}</button>
@@ -607,28 +676,30 @@ function pSchool(){
   <label class="f">${L('النصيحة اللي تحت الجدول','Tip under the sheet')}<input id="sgT" value="${esc(M.tip||'')}" dir="auto" placeholder="${L('ابدأ بالامتحانات، بعدين الواجب، بعدين المشاريع!','Start with Quizzes first, then Homework, then Projects!')}"></label>
   <button class="btn" onclick="saveSchMeta('${k.id}')">${L('حفظ','Save')}</button></details>`}
 function saveSchMeta(kid){S.schMeta??={};S.schMeta[kid]={grade:document.getElementById('sgY').value.trim(),tip:document.getElementById('sgT').value.trim()};save();render();toast(L('اتحفظ','Saved'))}
-function editSch(id,cat){const k=kidById(selKid)||S.kids[0],x=id?S.school[id]:{cat:cat||'hw',title:'',note:'',day:null,kid:k.id,wk:wkKeyOf(schOff)};if(!x)return;
+function editSch(id,cat){const k=kidById(selKid)||S.kids[0],x=id?S.school[id]:{cat:cat||'hw',title:'',note:'',day:null,kid:k.id,wk:wkKeyOf(schOff),...scDef(cat||'hw')};if(!x)return;
   const sun=ymd(x.wk);
   const days=[['w',L('طول الأسبوع','Whole week')],...[0,1,2,3,4].map(i=>{const d=new Date(sun);d.setDate(sun.getDate()+i);return[String(i),L(DAYS[i],DAYS_EN[i].slice(0,3))+' '+d.toLocaleDateString(L('ar-EG','en-GB'),{day:'numeric'})]})];
   const cur=x.day==null?'w':String(x.day);
   openDlg(`<h2>${id?L('تعديل البند','Edit item'):L('بند جديد','New item')}</h2><p class="muted" style="margin-top:0">${L('الأسبوع','Week')}: ${wkLabelD(sun)}</p>
-  <div class="f">${L('النوع','Type')}<div class="checks">${SCAT.map(([c,ar,en,col,em])=>`<label><input type="radio" name="scC" value="${c}" ${x.cat===c?'checked':''}>${em} ${L(ar,en.charAt(0)+en.slice(1).toLowerCase())}</label>`).join('')}</div></div>
+  <div class="f">${L('النوع','Type')}<div class="checks">${SCAT.map(([c,ar,en,col,em])=>`<label><input type="radio" name="scC" value="${c}" ${x.cat===c?'checked':''} ${id?'':`onchange="schDefSet('${c}')"`}>${em} ${L(ar,en.charAt(0)+en.slice(1).toLowerCase())}</label>`).join('')}</div></div>
   <label class="f">${L('العنوان','Title')}<input id="scT" value="${esc(x.title)}" dir="auto" placeholder="Math Project - 3D Shapes"></label>
   <label class="f">${L('ملاحظة (اختياري)','Note (optional)')}<input id="scN" value="${esc(x.note||'')}" dir="auto" placeholder="${L('مثلاً: أشكال مجسمة','e.g. bring the materials')}"></label>
+  <div class="row"><label class="f grow">${L('النقط','Points')}<input id="scP" type="number" min="0" value="${x.pts??0}"></label><label class="f grow">${L('نقط التميّز 🌟 (اختياري)','Excellence bonus 🌟 (optional)')}<input id="scB" type="number" min="0" value="${x.bonus??0}"></label></div>
+  <p class="muted" style="margin:-4px 0 10px;font-size:.88rem">${L('الولد بيعلّم عليه، وإنت بتوافق فتتضاف النقط. ٠ يعني من غير نقط ومن غير موافقة.','The child ticks it and you approve to add the points. 0 = no points, no approval needed.')}</p>
   <div class="f">${L('اليوم','Day')}<div class="checks">${days.map(([v,l])=>`<label><input type="radio" name="scD" value="${v}" ${v===cur?'checked':''}>${l}</label>`).join('')}</div></div>
   <div class="f">${id?L('بتاع مين؟','For whom?'):L('لمين؟ (تقدر تختار أكتر من واحد)','For whom? (pick one or more)')}<div class="checks">${S.kids.map(kk=>`<label><input type="${id?'radio':'checkbox'}" name="scK" value="${kk.id}" ${kk.id===x.kid?'checked':''}>${AV(kk,'mini')} ${esc(kk.name)}</label>`).join('')}</div></div>
   <div class="row" style="margin-top:10px"><button class="btn" onclick="saveSch('${id||''}')">${L('حفظ','Save')}</button><button class="btn ghost" onclick="closeDlg()">${L('إلغاء','Cancel')}</button>${id?`<button class="btn bad" style="margin-inline-start:auto" onclick="delSch('${id}')">${L('حذف','Delete')}</button>`:''}</div>`)}
 function saveSch(id){const q=s=>document.querySelector(s),title=q('#scT').value.trim();if(!title){toast(L('اكتب العنوان','Enter a title'));return}
-  const cat=q('input[name=scC]:checked')?.value||'other',dv=q('input[name=scD]:checked')?.value||'w',day=dv==='w'?null:+dv,note=q('#scN').value.trim();
+  const cat=q('input[name=scC]:checked')?.value||'other',dv=q('input[name=scD]:checked')?.value||'w',day=dv==='w'?null:+dv,note=q('#scN').value.trim(),pts=Math.max(0,parseInt(q('#scP').value,10)||0),bonus=Math.max(0,parseInt(q('#scB').value,10)||0);
   const kids=[...document.querySelectorAll('input[name=scK]:checked')].map(e=>e.value);if(!kids.length){toast(L('اختار طفل على الأقل','Pick at least one child'));return}
   S.school??={};
-  if(id)Object.assign(S.school[id],{cat,title,note,day,kid:kids[0]});
-  else{const w=wkKeyOf(schOff);kids.forEach((kid,i)=>S.school[uid()]={kid,cat,title,note,wk:w,day,done:0,ts:Date.now()+i})}
+  if(id)Object.assign(S.school[id],{cat,title,note,day,pts,bonus,kid:kids[0]});
+  else{const w=wkKeyOf(schOff);kids.forEach((kid,i)=>S.school[uid()]={kid,cat,title,note,wk:w,day,pts,bonus,done:0,ts:Date.now()+i})}
   save();closeDlg();render();toast(L('اتحفظ','Saved'))}
 function delSch(id){if(!confirm(L('تحذف البند ده؟','Delete this item?')))return;delete S.school[id];save();closeDlg();render()}
 function copySch(){const k=kidById(selKid)||S.kids[0],w=wkKeyOf(schOff),prev=schItems(k.id,schOff-1),cur=schItems(k.id,schOff);
   if(!prev.length){toast(L('مفيش بنود في الأسبوع اللي فات','No items last week'));return}
-  let n=0;S.school??={};prev.sort(schSort).forEach(x=>{if(cur.some(c=>c.title===x.title&&c.cat===x.cat))return;S.school[uid()]={kid:k.id,cat:x.cat,title:x.title,note:x.note||'',wk:w,day:x.day??null,done:0,ts:Date.now()+n};n++});
+  let n=0;S.school??={};prev.sort(schSort).forEach(x=>{if(cur.some(c=>c.title===x.title&&c.cat===x.cat))return;S.school[uid()]={kid:k.id,cat:x.cat,title:x.title,note:x.note||'',wk:w,day:x.day??null,pts:x.pts??scDef(x.cat).pts,bonus:x.bonus??0,done:0,ts:Date.now()+n};n++});
   save();render();toast(n?L(`اتنسخ ${n} بند`,`${n} items copied`):L('البنود موجودة بالفعل','Items already there'))}
 
 /* ---------- reader ---------- */
@@ -660,7 +731,7 @@ function pinKey(x){if(x==='⌫')pinBuf=pinBuf.slice(0,-1);else if(x==='✓'){}el
 /* ---------- parent ---------- */
 const TABS=[['ok','الموافقات'],['school','المدرسة 📚'],['chat','الرسايل'],['beh','ثواب وعقاب'],['tasks','المهام'],['week','خطة الأسبوع'],['rw','المكافآت'],['rep','التقرير'],['set','الإعدادات']];
 function vParent(tab){
-  const pc=pendingTasks().length+pendingReqs().length;
+  const pc=pendingTasks().length+pendingReqs().length+pendingSch().length;
   const tabs=TABS.map(([k,l])=>`<button class="tab" aria-current="${k===tab}" onclick="go('parent','${k}')">${l}${k==='ok'&&pc?`<span class="badge">${pc}</span>`:''}${k==='chat'&&unreadP()?`<span class="badge">${unreadP()}</span>`:''}</button>`).join('');
   const body={ok:pOk,school:pSchool,chat:pChat,beh:pBeh,tasks:pTasks,week:pWeek,rw:pRw,rep:pRep,set:pSet}[tab]();
   return `<div class="top"><button class="back" onclick="go('home')">خروج</button><h2>لوحة الأهل</h2></div><nav class="tabs">${tabs}</nav>${body}`;
@@ -671,12 +742,19 @@ function pOk(){
   const rh=S.tasks.filter(t=>t.rate&&t.days.includes(dw)).flatMap(t=>S.kids.filter(k=>t.kids.includes(k.id)).map(k=>{const s=st(k.id,t.id),nt=S.notes[today()+'|'+k.id+'|'+t.id];
     return `<div class="card"><div>${kidTag(k)} ${esc(t.emoji)} ${esc(t.title)}</div>${s==='done'?`<div class="muted">اتقيّم النهارده ${esc(nt||'')}</div>`:`<div class="stars">${[1,2,3,4,5].map(n=>`<button onclick="rateKid('${k.id}','${t.id}',${n})" aria-label="${n} من 5">⭐ ${n}<small>+${Math.round(P(t,k.id)*n/5)}</small></button>`).join('')}</div>`}</div>`})).join('');
   const mh=isMealDay()?S.kids.map(k=>{const p=weekPct(k),ok=p>=S.meal.pct,paid=S.meal.paid[today()+'|'+k.id];return `<div class="card row"><span class="grow">${kidTag(k)} <span class="muted">التزام الأسبوع ${p}%</span></span>${paid?'<span class="chip ok">استلم ✓</span>':ok?`<button class="btn good" onclick="mealPay('${k.id}')">اديته ${S.meal.amount} جنيه</button>`:'<span class="chip no">مش مستحق</span>'}</div>`}).join(''):'';
-  if(!pt.length&&!pr.length&&!rh&&!mh)return '<div class="card muted">مفيش حاجة مستنية موافقتك دلوقتي.</div>';
+  const ps=pendingSch().sort(schSort),ml=missedList(),ms=missedSch();
+  const mc=ml.map(({d,kid,t})=>{const k=kidById(kid),p=P(t,kid);return `<div class="card"><div>${kidTag(k)} ${esc(t.emoji)} ${esc(t.title)} <span class="muted">${d===today()?L('النهارده','today'):L(DAYS[ymd(d).getDay()],DAYS_EN[ymd(d).getDay()])} ${fmt(T(t,ymd(d)))}</span></div><div class="muted">${L(`فاتت واتخصم منه ${p} نقطة`,`Missed, ${p} pts deducted`)}</div>
+    <div class="row" style="margin-top:8px"><button class="btn good" onclick="lateOk('${d}','${kid}','${t.id}',1)">${L('اتعملت فعلاً','It was done')} +${2*p}</button><button class="btn ghost" onclick="lateOk('${d}','${kid}','${t.id}',0)">${L('رجّع الخصم بس','Refund only')} +${p}</button></div></div>`}).join('')
+   +ms.map(x=>{const k=kidById(x.kid),b=x.lost??x.pts;return `<div class="card"><div>${kidTag(k)} 📚 <span class="raw" dir="auto">${esc(x.title)}</span></div><div class="muted">${L(`فاتت واتخصم منه ${b} نقطة`,`Missed, ${b} pts deducted`)}</div>
+    <div class="row" style="margin-top:8px"><button class="btn good" onclick="schLateOk('${x.id}',1)">${L('اتعملت فعلاً','It was done')} +${b+(x.pts||0)}</button><button class="btn ghost" onclick="schLateOk('${x.id}',0)">${L('رجّع الخصم بس','Refund only')} +${b}</button></div></div>`}).join('');
+  if(!pt.length&&!pr.length&&!rh&&!mh&&!ps.length&&!mc)return '<div class="card muted">مفيش حاجة مستنية موافقتك دلوقتي.</div>';
+  const sc=ps.map(x=>{const k=kidById(x.kid),cat=SCAT.find(s=>s[0]===x.cat)||SCAT[4],dt=schDayTxt(x);
+    return `<div class="card"><div>${kidTag(k)} ${L('خلّص:','finished:')}${dt?` <span class="chip">${dt}</span>`:''}</div><div class="sch-ap"><span>${cat[4]}</span> <b class="raw" dir="auto">${esc(x.title)}</b></div>${schBtns(x.id,x)}</div>`}).join('');
   const a=pt.map(({d,kid,t,note})=>{const k=kidById(kid),p=P(t,kid)+(fastOf(d,kid,t)?t.speedPts:0);return `<div class="card"><div>${kidTag(k)} خلّص: ${esc(t.emoji)} ${esc(t.title)}${note?` <span class="chip">${esc(note)}</span>`:''} ${d!==today()?`<span class="muted">(${d})</span>`:''}</div>
     <div class="row" style="margin-top:8px"><button class="btn good" onclick="okTask('${d}','${kid}','${t.id}',1)">${t.bonus?'حضر':'موافقة'} +${p}</button>${t.bonus?`<button class="btn good" onclick="okTask('${d}','${kid}','${t.id}',1,1)">حضر واتميز +${p+t.bonus}</button>`:`<button class="btn warn" onclick="okTask('${d}','${kid}','${t.id}',.5)">نص النقط</button>`}<button class="btn bad" onclick="noTask('${d}','${kid}','${t.id}')">لسه</button></div></div>`}).join('');
   const b=pr.map(q=>{const k=kidById(q.kid),r=S.rewards.find(x=>x.id===q.rid);if(!k||!r)return '';return `<div class="card"><div>${kidTag(k)} عايز: ${esc(r.emoji)} ${esc(r.title)} <span class="muted">(${r.num} نقطة، معاه ${k.points})</span></div>
     <div class="row" style="margin-top:8px"><button class="btn good" onclick="okReq('${q.id}')">موافقة</button><button class="btn bad" onclick="noReq('${q.id}')">مش دلوقتي</button></div></div>`}).join('');
-  return `<div class="list">${mh?'<h3 style="margin-top:0">🍔 وجبة المدرسة النهارده</h3>'+mh:''}${rh?'<h3 style="margin-top:0">تقييم النهارده (للأب والأم بس)</h3>'+rh:''}${pt.length?'<h3>مهام خلصت</h3>'+a:''}${pr.length?'<h3>طلبات مكافآت</h3>'+b:''}</div>`;
+  return `<div class="list">${mh?'<h3 style="margin-top:0">🍔 وجبة المدرسة النهارده</h3>'+mh:''}${rh?'<h3 style="margin-top:0">تقييم النهارده (للأب والأم بس)</h3>'+rh:''}${pt.length?'<h3>مهام خلصت</h3>'+a:''}${ps.length?`<h3>📚 ${L('مهام المدرسة','School tasks')}</h3>`+sc:''}${pr.length?'<h3>طلبات مكافآت</h3>'+b:''}${mc?`<h3>⌛ ${L('فاتت واتخصمت (آخر يومين)','Missed & deducted (last 2 days)')}</h3><p class="muted" style="margin-top:-6px">${L('لو الولد عملها ونسي يعلّم، أو ليه عذر، تقدر ترجّع له النقط من هنا.','If he did it but forgot to tick, or had an excuse, you can give the points back here.')}</p>`+mc:''}</div>`;
 }
 function okTask(d,kid,tid,f,bon){const t=S.tasks.find(x=>x.id===tid);setSt(kid,tid,'done',d);const fs=fastOf(d,kid,t),p=Math.round(P(t,kid)*f)+(bon?t.bonus:0)+(fs?t.speedPts:0);addPts(kid,p,(f<1?'نص نقط: ':'')+t.title+(bon?' (تميّز)':'')+(fs?' ⚡':''));save();render();toast('+'+p+' نقطة')}
 function rateKid(kid,tid,n){const t=S.tasks.find(x=>x.id===tid);setSt(kid,tid,'done');S.notes[today()+'|'+kid+'|'+tid]='⭐'.repeat(n);const p=Math.round(P(t,kid)*n/5);addPts(kid,p,t.title+' ('+n+'/5)');save();render();toast('+'+p+' نقطة')}
@@ -825,7 +903,7 @@ view.name==='kid'?vKid(view.arg):view.name==='school'?vSchool(view.arg):view.nam
   trDom(app);updTimers();document.querySelectorAll('.chat').forEach(e=>e.scrollTop=e.scrollHeight);
 }
 function tick(){
-  if(!S)return;
+  if(!S)return;expireTasks();
   if(view.name==='kid'){const k=kidById(view.arg),n=nowM(),key=today();
     kidTasks(k).forEach(t=>{if(st(k.id,t.id)||t.rate||!P(t,k.id)&&!t.title.includes('تمرين'))return;const tm=m(T(t));
       [[tm-5,'pre','⏰ بعد ٥ دقايق: '],[tm,'now','⏰ دلوقتي وقت: ']].forEach(([w,tag,txt])=>{const id=key+k.id+t.id+tag;
@@ -840,7 +918,7 @@ async function initRemote(){try{S=seed();prepare();const cur=clean(S),ph=cur.pho
   await fdb.runTransaction(async tx=>{const x=await tx.get(mainRef);if(!x.exists){tx.set(mainRef,cur);tx.set(photoRef,ph)}})}catch(e){onErr(e)}}
 function onMain(snap){
   if(!snap.exists){if(!snap.metadata.fromCache)initRemote();return}
-  S=snap.data();S.photos=lastPhotos;base=clean(S);prepare();ready=true;save();
+  S=snap.data();S.photos=lastPhotos;base=clean(S);prepare();ready=true;save();expireTasks();
   if(['loading','login','err'].includes(view.name))view={name:'home'};
   if(view.name==='kid')checkMsgs(view.arg);
   softRender();
