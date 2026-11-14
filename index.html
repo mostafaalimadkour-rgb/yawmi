@@ -148,6 +148,26 @@ summary{cursor:pointer}
 .msg small{display:block;opacity:.75;font-size:.75rem}
 .lang{float:inline-end;border:2px solid var(--line);background:var(--surface);border-radius:99px;padding:4px 14px;font-weight:700;margin-top:6px}
 .wallet .bal{font-size:2.4rem;font-weight:800;color:var(--c)}
+.checks label:has(input:checked){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
+.sch-hd{background:#6F42C1;color:#fff;border-radius:24px;padding:18px 20px;margin-top:10px}
+.sch-hd h2{font-size:1.9rem;font-weight:800;color:#fff}
+.sch-hd .y{color:#FFD86B;font-weight:700;font-size:1.1rem}
+.sch-hd .w{opacity:.92;font-size:.95rem}
+.sch-hd .bar{background:rgba(255,255,255,.3)}
+.sch-cat{display:flex;align-items:center;gap:8px;background:var(--cc);color:#fff;border-radius:12px;padding:7px 14px;font-weight:800;margin:18px 0 8px;letter-spacing:.3px}
+.sch-cat .add{margin-inline-start:auto;background:rgba(255,255,255,.25);border:0;color:#fff;border-radius:10px;padding:0 12px;font-size:1.3rem;font-weight:800;line-height:1.5}
+.sch-it{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;background:var(--surface);border:2px solid var(--line);border-radius:14px;padding:10px 12px}
+.sch-ck{width:36px;height:36px;border-radius:10px;border:3px solid var(--cc);background:transparent;display:grid;place-items:center;font-size:1.2rem;font-weight:800;color:#fff;padding:0;line-height:1}
+.sch-ck[aria-pressed="true"]{background:var(--cc)}
+.sch-it .t{display:block;font-weight:700;line-height:1.3}
+.sch-it .n{display:block;color:var(--muted);font-size:.9rem;line-height:1.35}
+.sch-it.done .t{text-decoration:line-through;opacity:.55}
+.sch-it .side{display:grid;gap:4px;justify-items:end}
+.sch-it .chip{background:var(--bg)}
+[dir=rtl] .sch-it .t,[dir=rtl] .sch-it .n,[dir=rtl] .sch-tip{text-align:right}
+.sch-tip{background:#FFF3C4;color:#5B3BA8;border-radius:16px;padding:12px 16px;font-weight:700;margin-top:18px}
+.sch-card{display:block;width:100%;text-align:start;margin-top:12px;border-inline-start:8px solid #6F42C1}
+.sch-mini{margin-top:6px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px}
 </style>
 </head>
 <body>
@@ -223,7 +243,7 @@ const DICT={'الرتبة بتتحسب من كل النقط اللي الطفل 
 '٣ مرات':'3 times','مرة':'once','الأحد':'Sunday','الاتنين':'Monday','التلات':'Tuesday','الأربع':'Wednesday','الخميس':'Thursday','الجمعة':'Friday','السبت':'Saturday',
 'سورة الفاتحة':'Surah Al-Fatiha','سورة الناس':'Surah An-Nas','سورة الفلق':'Surah Al-Falaq','سورة الإخلاص':'Surah Al-Ikhlas','سورة المسد':'Surah Al-Masad','سورة النصر':'Surah An-Nasr',
 'سورة الكافرون':'Surah Al-Kafirun','سورة الكوثر':'Surah Al-Kawthar','سورة الماعون':'Surah Al-Maun','سورة قريش':'Surah Quraysh','سورة الفيل':'Surah Al-Fil','سورة العصر':'Surah Al-Asr',
-'سورة التكاثر':'Surah At-Takathur','سورة الزلزلة':'Surah Az-Zalzalah','سورة قصيرة':'Short surah','سورة':'Surah','مكافآت':'rewards'};
+'المدرسة':'School','سورة التكاثر':'Surah At-Takathur','سورة الزلزلة':'Surah Az-Zalzalah','سورة قصيرة':'Short surah','سورة':'Surah','مكافآت':'rewards'};
 let DK;
 function tr(x){if(LANG!=='en'||!x||!/[\u0600-\u06FF]/.test(x))return x;DK??=Object.keys(DICT).filter(k=>k.length>=3).sort((a,b)=>b.length-a.length);let o=String(x);for(const k of DK)if(o.includes(k))o=o.split(k).join(DICT[k]);return o.replace(/،/g,',').replace(/؟/g,'?')}
 function trDom(root){if(LANG!=='en'||!root||!document.createTreeWalker)return;const w=document.createTreeWalker(root,4,{acceptNode:n=>n.parentElement&&n.parentElement.closest('.quran,.raw')?2:1});let n;while(n=w.nextNode()){if(/[\u0600-\u06FF]/.test(n.nodeValue))n.nodeValue=tr(n.nodeValue)}
@@ -323,12 +343,13 @@ function prepare(){
   if(!S.ver){S.ver=3;const fresh=seed().tasks,has=ti=>S.tasks.some(t=>t.title===ti);
     ['الذهاب للمدرسة','الاستعداد للتمرين','قصة قبل النوم','سماع الكلام والاتزان'].forEach(ti=>{if(!has(ti))S.tasks.push(fresh.find(t=>t.title===ti))});
     const dr=S.tasks.find(t=>t.title==='لبس المدرسة وتجهيز الشنطة');if(dr&&!dr.speed){dr.speed=10;dr.speedPts=5}}
-  if(S.ver<4)upg4();if(S.ver<5)upg5();
-  S.chat??={};S.meal??={amount:150,pct:75,day:4,paid:{}};S.meal.paid??={};
+  if(S.ver<4)upg4();if(S.ver<5)upg5();if(S.ver<6)upg6();
+  S.chat??={};S.meal??={amount:150,pct:75,day:4,paid:{}};S.meal.paid??={};S.school??={};S.schMeta??={};
   S.kids.forEach(k=>{if(k['photo']){S.photos[k.id]??=k['photo'];delete k['photo']}});
   delete S['notified'];delete S['sender'];delete S['lang'];
   const c=new Date();c.setDate(c.getDate()-60);const cut=dkey(c);
   for(const d in S.log)if(d<cut)delete S.log[d];
+  for(const id in S.school)if((S.school[id].wk||'')<cut)delete S.school[id];
   ['notes','speed','timers'].forEach(f=>{for(const k in S[f])if(k.slice(0,10)<cut)delete S[f][k]});
   for(const k in S.meal.paid)if(k.slice(0,10)<cut)delete S.meal.paid[k];
   if(S.requests.some(r=>r.status!=='pending'&&r.d<cut))S.requests=S.requests.filter(r=>r.status==='pending'||r.d>=cut);
@@ -341,6 +362,21 @@ function upg5(){const ids=S.kids.map(k=>k.id);
   if(!g('الاستعداد للسباحة'))S.tasks.push(F('19:00','🩳','الاستعداد للسباحة',15,10,[0,2],{speed:10,speedPts:5}));
   if(!g('مسابقة الروبوتكس'))S.tasks.push(F('10:00','🏆','مسابقة الروبوتكس',120,20,[6],{bonus:15,kids:['k2']}));
   S.meal={amount:150,pct:75,day:4,paid:{}};S.ver=5}
+function upg6(){S.school??={};S.schMeta??={};const kid=S.kids.some(k=>k.id==='k2')?'k2':S.kids[0]?.id;
+  if(kid){const w='2026-11-15',I=(id,cat,title,note,day=null)=>{S.school['w1115_'+id]??={kid,cat,title,note,wk:w,day,done:0,ts:1763190000000+(+id)}};
+    I('01','proj','PE Project - Sportsmanship','الروح الرياضية - جاهز للعرض');
+    I('02','proj','Math Project - 3D Shapes','أشكال مجسمة');
+    I('03','proj','Social Project - Optional Topics','موضوع اختياري');
+    I('04','show','Throwback 80s Day','لبس الثمانينات',0);
+    I('05','show','Character Day','لبس شخصية',2);
+    I('06','quiz','German / French Quiz','',0);
+    I('07','quiz','English Connectives Quiz','',0);
+    I('08','quiz','Social Studies Quiz','دراسات',3);
+    I('09','hw','English - End Week Sheet','شيت الانجليزي');
+    I('10','hw','IXL','تطبيق IXL');
+    I('11','hw','Social Studies - Interactive Assignment','واجب تفاعلي');
+    S.schMeta[kid]??={grade:'Year 3',tip:''}}
+  S.ver=6}
 function weekPct(k){let tot=0,done=0;for(let i=1;i<=7;i++){const d=new Date();d.setDate(d.getDate()-i);const key=dkey(d);kidTasks(k,d).filter(t=>P(t,k.id)>0).forEach(t=>{tot++;if(st(k.id,t.id,key)==='done')done++})}
   const d=new Date(),key=today();kidTasks(k,d).filter(t=>P(t,k.id)>0&&m(T(t))+t.dur<=nowM()).forEach(t=>{tot++;if(st(k.id,t.id,key)==='done')done++});
   return tot?Math.round(done/tot*100):0}
@@ -495,7 +531,7 @@ function vKid(id){
   const moves=mine.slice(-8).reverse().map(h=>`<div class="row"><span class="grow">${esc(h.reason)}</span><span class="chip ${h.pts>=0?'ok':'no'}">${h.pts>0?'+':''}${h.pts}</span></div>`).join('');
   return `<div style="--c:${k.color}"><div class="top">${DEV&&DEV!=='p'?`<button class="back" onclick="pinBuf='';go('pin','setup')" aria-label="تغيير الجهاز">🔒</button><button class="back" onclick="pinBuf='';go('pin')">لوحة الأهل</button>`:`<button class="back" onclick="go('home')">رجوع</button>`}</div>
   <div class="who">${AV(k,'av')}<div><h2>أهلاً يا ${esc(k.name)}</h2><div class="stats"><span>${R.r[1]} ${R.r[2]}</span><span>🔥 ${streak(k)} يوم ورا بعض</span></div></div></div>
-  ${scoreCard(k)}${mealCard(k)}${arc(k)}${now}<h3>يومك النهارده</h3><ol class="tasks">${rows||'<li>مفيش مهام النهارده</li>'}</ol>
+  ${scoreCard(k)}${mealCard(k)}${arc(k)}${now}${schCard(k)}<h3>يومك النهارده</h3><ol class="tasks">${rows||'<li>مفيش مهام النهارده</li>'}</ol>
   <details class="card" style="margin-top:20px"><summary><b>خطة الأسبوع 📅</b></summary>${[0,1,2,3,4,5,6].map(o=>{const d=new Date();d.setDate(d.getDate()+o);const ts=kidTasks(k,d).filter(t=>t.days.length<7);return `<div style="margin-top:10px"><b>${o===0?'النهارده':o===1?'بكرة':DAYS[d.getDay()]}</b><div class="muted">${ts.map(t=>esc(t.emoji)+' '+esc(t.title)+' '+fmt(T(t,d))).join('<br>')||'يوم عادي'}</div></div>`}).join('')}</details>
   <h3>رسايل بابا وماما 💬</h3>${chatBox(k,'k')}
   <h3>محفظتي 💰</h3><div class="card wallet"><div class="row"><span class="grow"><span class="bal">${k.points}</span> نقطة</span><span class="muted">الأسبوع ده +${earned}<br>صرفت ${spent}</span></div>
@@ -509,6 +545,91 @@ function stopSpeed(kid,tid){const key=today()+'|'+kid+'|'+tid,sec=Math.round((Da
 function updTimers(){document.querySelectorAll('.tmr').forEach(e=>e.textContent=mmss(Math.max(0,Math.round((Date.now()-+e.dataset.s)/1000))))}
 setInterval(updTimers,1000);
 function askReward(kid,rid){S.requests.push({id:uid(),kid,rid,status:'pending',d:today()});save();render();toast('طلبك اتبعت للأهل')}
+
+/* ---------- school weekly tasks ---------- */
+const SCAT=[['proj','المشاريع','PROJECTS','#1D5FA8','📁'],['show','يوم العرض','SHOW DAY','#E07B1A','🎭'],['quiz','امتحانات','QUIZZES','#C92A5B','📝'],['hw','الواجب','HOMEWORK','#0A8A6C','📚'],['other','حاجات تانية','OTHER','#6B5B95','📌']];
+let schOff=0,schDay='all',schBack='k';
+const ymd=s=>{const[y,mo,da]=s.split('-').map(Number);return new Date(y,mo-1,da,12)};
+/* school week = Sunday→Thursday; on Friday & Saturday the coming week shows */
+function wkSun(off=0){const d=new Date();d.setHours(12,0,0,0);const g=d.getDay();d.setDate(d.getDate()+(g>=5?7-g:-g)+off*7);return d}
+const wkKeyOf=off=>dkey(wkSun(off));
+function wkLabelD(a){const b=new Date(a);b.setDate(a.getDate()+4);const loc=L('ar-EG','en-GB');
+  return (a.getMonth()===b.getMonth()?a.toLocaleDateString(loc,{day:'numeric'}):a.toLocaleDateString(loc,{day:'numeric',month:'short'}))+' – '+b.toLocaleDateString(loc,{day:'numeric',month:'long',year:'numeric'})}
+const wkLabel=off=>wkLabelD(wkSun(off));
+const schItems=(kid,off=0)=>{const w=wkKeyOf(off);return Object.entries(S.school||{}).filter(([,x])=>x.kid===kid&&x.wk===w).map(([id,x])=>({...x,id}))};
+const schSort=(a,b)=>(a.day??9)-(b.day??9)||(a.ts||0)-(b.ts||0);
+const schMeta=kid=>S.schMeta?.[kid]||{};
+function schDayTxt(x){if(x.day==null)return '';const d=ymd(x.wk);d.setDate(d.getDate()+x.day);const k=dkey(d),t=new Date();t.setDate(t.getDate()+1);
+  if(k===today())return L('النهارده','Today');if(k===dkey(t))return L('بكرة','Tomorrow');
+  return L(DAYS[d.getDay()],DAYS_EN[d.getDay()].slice(0,3))+' '+d.toLocaleDateString(L('ar-EG','en-GB'),{day:'numeric'})}
+function schRow(x,col,who){const dt=schDayTxt(x),isT=dt===L('النهارده','Today');
+  return `<div class="sch-it ${x.done?'done':''}" style="--cc:${col}"><button class="sch-ck" aria-pressed="${!!x.done}" aria-label="${esc(x.title)}" onclick="togSch('${x.id}')">${x.done?'✓':''}</button>
+  <span class="raw"><span class="t" dir="auto">${esc(x.title)}</span>${x.note?`<span class="n" dir="auto">${esc(x.note)}</span>`:''}</span>
+  <span class="side">${dt?`<span class="chip ${isT&&!x.done?'wait':''}">${dt}</span>`:''}${who==='p'?`<button class="btn ghost" style="padding:3px 10px" onclick="editSch('${x.id}')">${L('تعديل','Edit')}</button>`:''}</span></div>`}
+function schList(its,who){
+  return SCAT.map(([c,ar,en,col,em])=>{const xs=its.filter(x=>(x.cat||'other')===c).sort(schSort);
+    if(!xs.length&&(who==='k'||c==='other'))return '';
+    return `<div class="sch-cat" style="--cc:${col}"><span>${em}</span><span class="raw">${L(ar+' · ','')}${en}</span>${who==='p'?`<button class="add" onclick="editSch('','${c}')" aria-label="${L('إضافة','Add')}">+</button>`:''}</div>
+    <div class="list">${xs.map(x=>schRow(x,col,who)).join('')||`<div class="muted" style="padding:0 8px">${L('مفيش لسه','None yet')}</div>`}</div>`}).join('')}
+function schNav(){
+  const mid=schOff===0?L('الأسبوع ده','This week'):schOff===1?L('الأسبوع الجاي','Next week'):schOff===-1?L('الأسبوع اللي فات','Last week'):wkLabel(schOff);
+  return `<div class="row" style="margin:12px 0 4px;flex-wrap:nowrap"><button class="btn ghost" onclick="schOff--;render()">${L('→ اللي فات','← Prev')}</button><b class="grow" style="text-align:center;min-width:0">${mid}</b><button class="btn ghost" onclick="schOff++;render()">${L('الجاي ←','Next →')}</button></div>`}
+function schCard(k){const its=schItems(k.id,0),left=its.filter(x=>!x.done).sort(schSort),done=its.length-left.length,pct=its.length?Math.round(done/its.length*100):0;
+  const msg=its.length?(left.length?L(`خلصت ${done} من ${its.length}، فاضل ${left.length}`,`${done} of ${its.length} done, ${left.length} left`):L('خلصت كله، برافو! 🎉','All done, great job! 🎉')):L('لسه مفيش مهام','No tasks yet');
+  return `<button class="card sch-card" onclick="schOff=0;schDay='all';schBack='k';go('school','${k.id}')"><div class="row"><span style="font-size:2rem">📚</span><span class="grow"><b>${L('مهام المدرسة الأسبوع ده','School tasks this week')}</b><br><span class="muted">${msg}</span></span><b style="font-size:1.5rem">${L('‹','›')}</b></div>
+  ${its.length?`<div class="bar" style="margin-top:8px;--c:#6F42C1"><i style="width:${pct}%"></i></div>`:''}
+  ${left.slice(0,3).map(x=>{const dt=schDayTxt(x);return `<div class="sch-mini"><span class="raw" dir="auto">${esc(x.title)}</span>${dt?`<span class="chip ${dt===L('النهارده','Today')?'wait':''}">${dt}</span>`:''}</div>`}).join('')}</button>`}
+function vSchool(id){const k=kidById(id);if(!k)return vHome();
+  const all=schItems(k.id,schOff),done=all.filter(x=>x.done).length,pct=all.length?Math.round(done/all.length*100):0,sun=wkSun(schOff),M=schMeta(k.id);
+  const its=schDay==='all'?all:all.filter(x=>x.day===+schDay);
+  const chips=[['all',L('الكل','All')],...[0,1,2,3,4].map(i=>{const d=new Date(sun);d.setDate(sun.getDate()+i);return[String(i),L(DAYS[i],DAYS_EN[i].slice(0,3))+' '+d.toLocaleDateString(L('ar-EG','en-GB'),{day:'numeric'})]})]
+    .map(([v,l])=>`<button style="--c:#6F42C1" aria-pressed="${schDay===v}" onclick="schDay='${v}';render()">${l}</button>`).join('');
+  const empty=!all.length?L('لسه مفيش مهام للأسبوع ده. بابا وماما بيكتبوها من لوحة الأهل.','No tasks for this week yet. Dad & Mom add them from the parent dashboard.'):!its.length?L('مفيش حاجة في اليوم ده.','Nothing on this day.'):'';
+  return `<div style="--c:${k.color}"><div class="top"><button class="back" onclick="${schBack==='p'?"go('parent','school')":`go('kid','${k.id}')`}">${L('رجوع','Back')}</button></div>
+  <div class="sch-hd"><div class="row" style="flex-wrap:nowrap"><span class="grow"><h2>${L('مهام الأسبوع','Weekly Tasks')}</h2><div class="y">${esc(k.name)}${M.grade?` · <span class="raw" dir="auto">${esc(M.grade)}</span>`:''}</div></span><span style="font-size:2.8rem;line-height:1">🎒</span></div>
+  <div class="w" style="margin-top:6px">${L('الأسبوع','Week')}: ${wkLabelD(sun)}  |  ${L('علّم لما تخلص!','Check when done!')}</div>
+  ${all.length?`<div class="bar" style="margin-top:10px"><i style="width:${pct}%;background:#FFD86B"></i></div><div class="w" style="margin-top:4px">${L(`خلصت ${done} من ${all.length}`,`${done} of ${all.length} done`)}</div>`:''}</div>
+  ${schNav()}<div class="kpick" style="margin-top:8px">${chips}</div>
+  ${empty?`<div class="card muted" style="margin-top:14px">${empty}</div>`:schList(its,'k')}
+  <div class="sch-tip ${M.tip?'raw':''}" dir="auto">💡 ${M.tip?esc(M.tip):L('ابدأ بالامتحانات، بعدين الواجب، بعدين المشاريع!','Start with Quizzes first, then Homework, then Projects!')}</div></div>`}
+function togSch(id){const x=S.school?.[id];if(!x)return;x.done=x.done?0:1;save();render();
+  if(x.done&&view.name==='school'){const all=Object.values(S.school).filter(i=>i.kid===x.kid&&i.wk===x.wk);toast(all.every(i=>i.done)?L('خلصت كل مهام الأسبوع! 🎉','All weekly tasks done! 🎉'):L('برافو! ✓','Great job! ✓'))}}
+function pSchool(){
+  const pick=S.kids.map(k=>`<button style="--c:${k.color}" aria-pressed="${k.id===selKid}" onclick="selKid='${k.id}';render()">${AV(k,'mini')} ${esc(k.name)}</button>`).join('');
+  const k=kidById(selKid)||S.kids[0],its=schItems(k.id,schOff),done=its.filter(x=>x.done).length,M=schMeta(k.id);
+  return `<div class="kpick">${pick}</div>${schNav()}
+  <div class="muted" style="text-align:center">${wkLabel(schOff)} · ${L(`خلّص ${done} من ${its.length}`,`${done} of ${its.length} done`)}</div>
+  <button class="btn" style="width:100%;padding:12px;margin:12px 0 8px" onclick="editSch()">+ ${L('بند جديد لـ','New item for ')}${esc(k.name)}</button>
+  <div class="row" style="gap:8px"><button class="btn ghost grow" style="white-space:normal" onclick="copySch()">${L('انسخ بنود الأسبوع اللي فات','Copy last week')}</button><button class="btn ghost grow" style="white-space:normal" onclick="schDay='all';schBack='p';go('school','${k.id}')">👀 ${L('شاشة ','View ')}${esc(k.name)}</button></div>
+  ${schList(its,'p')}
+  <details class="card" style="margin-top:18px"><summary><b>${L('بيانات الجدول لـ','Sheet details for ')}${esc(k.name)}</b></summary>
+  <label class="f" style="margin-top:10px">${L('الصف','Grade')}<input id="sgY" value="${esc(M.grade||'')}" placeholder="Year 3" dir="auto"></label>
+  <label class="f">${L('النصيحة اللي تحت الجدول','Tip under the sheet')}<input id="sgT" value="${esc(M.tip||'')}" dir="auto" placeholder="${L('ابدأ بالامتحانات، بعدين الواجب، بعدين المشاريع!','Start with Quizzes first, then Homework, then Projects!')}"></label>
+  <button class="btn" onclick="saveSchMeta('${k.id}')">${L('حفظ','Save')}</button></details>`}
+function saveSchMeta(kid){S.schMeta??={};S.schMeta[kid]={grade:document.getElementById('sgY').value.trim(),tip:document.getElementById('sgT').value.trim()};save();render();toast(L('اتحفظ','Saved'))}
+function editSch(id,cat){const k=kidById(selKid)||S.kids[0],x=id?S.school[id]:{cat:cat||'hw',title:'',note:'',day:null,kid:k.id,wk:wkKeyOf(schOff)};if(!x)return;
+  const sun=ymd(x.wk);
+  const days=[['w',L('طول الأسبوع','Whole week')],...[0,1,2,3,4].map(i=>{const d=new Date(sun);d.setDate(sun.getDate()+i);return[String(i),L(DAYS[i],DAYS_EN[i].slice(0,3))+' '+d.toLocaleDateString(L('ar-EG','en-GB'),{day:'numeric'})]})];
+  const cur=x.day==null?'w':String(x.day);
+  openDlg(`<h2>${id?L('تعديل البند','Edit item'):L('بند جديد','New item')}</h2><p class="muted" style="margin-top:0">${L('الأسبوع','Week')}: ${wkLabelD(sun)}</p>
+  <div class="f">${L('النوع','Type')}<div class="checks">${SCAT.map(([c,ar,en,col,em])=>`<label><input type="radio" name="scC" value="${c}" ${x.cat===c?'checked':''}>${em} ${L(ar,en.charAt(0)+en.slice(1).toLowerCase())}</label>`).join('')}</div></div>
+  <label class="f">${L('العنوان','Title')}<input id="scT" value="${esc(x.title)}" dir="auto" placeholder="Math Project - 3D Shapes"></label>
+  <label class="f">${L('ملاحظة (اختياري)','Note (optional)')}<input id="scN" value="${esc(x.note||'')}" dir="auto" placeholder="${L('مثلاً: أشكال مجسمة','e.g. bring the materials')}"></label>
+  <div class="f">${L('اليوم','Day')}<div class="checks">${days.map(([v,l])=>`<label><input type="radio" name="scD" value="${v}" ${v===cur?'checked':''}>${l}</label>`).join('')}</div></div>
+  <div class="f">${id?L('بتاع مين؟','For whom?'):L('لمين؟ (تقدر تختار أكتر من واحد)','For whom? (pick one or more)')}<div class="checks">${S.kids.map(kk=>`<label><input type="${id?'radio':'checkbox'}" name="scK" value="${kk.id}" ${kk.id===x.kid?'checked':''}>${AV(kk,'mini')} ${esc(kk.name)}</label>`).join('')}</div></div>
+  <div class="row" style="margin-top:10px"><button class="btn" onclick="saveSch('${id||''}')">${L('حفظ','Save')}</button><button class="btn ghost" onclick="closeDlg()">${L('إلغاء','Cancel')}</button>${id?`<button class="btn bad" style="margin-inline-start:auto" onclick="delSch('${id}')">${L('حذف','Delete')}</button>`:''}</div>`)}
+function saveSch(id){const q=s=>document.querySelector(s),title=q('#scT').value.trim();if(!title){toast(L('اكتب العنوان','Enter a title'));return}
+  const cat=q('input[name=scC]:checked')?.value||'other',dv=q('input[name=scD]:checked')?.value||'w',day=dv==='w'?null:+dv,note=q('#scN').value.trim();
+  const kids=[...document.querySelectorAll('input[name=scK]:checked')].map(e=>e.value);if(!kids.length){toast(L('اختار طفل على الأقل','Pick at least one child'));return}
+  S.school??={};
+  if(id)Object.assign(S.school[id],{cat,title,note,day,kid:kids[0]});
+  else{const w=wkKeyOf(schOff);kids.forEach((kid,i)=>S.school[uid()]={kid,cat,title,note,wk:w,day,done:0,ts:Date.now()+i})}
+  save();closeDlg();render();toast(L('اتحفظ','Saved'))}
+function delSch(id){if(!confirm(L('تحذف البند ده؟','Delete this item?')))return;delete S.school[id];save();closeDlg();render()}
+function copySch(){const k=kidById(selKid)||S.kids[0],w=wkKeyOf(schOff),prev=schItems(k.id,schOff-1),cur=schItems(k.id,schOff);
+  if(!prev.length){toast(L('مفيش بنود في الأسبوع اللي فات','No items last week'));return}
+  let n=0;S.school??={};prev.sort(schSort).forEach(x=>{if(cur.some(c=>c.title===x.title&&c.cat===x.cat))return;S.school[uid()]={kid:k.id,cat:x.cat,title:x.title,note:x.note||'',wk:w,day:x.day??null,done:0,ts:Date.now()+n};n++});
+  save();render();toast(n?L(`اتنسخ ${n} بند`,`${n} items copied`):L('البنود موجودة بالفعل','Items already there'))}
 
 /* ---------- reader ---------- */
 function openRead(kid,tid){const t=S.tasks.find(x=>x.id===tid);
@@ -537,11 +658,11 @@ function pinKey(x){if(x==='⌫')pinBuf=pinBuf.slice(0,-1);else if(x==='✓'){}el
   if(pinBuf.length===4){if(pinBuf===S.pin){pinBuf='';if(view.arg==='setup'){setDevice('');go('setup');return}go('parent','ok');return}pinBuf='';toast('الرقم غلط')}render()}
 
 /* ---------- parent ---------- */
-const TABS=[['ok','الموافقات'],['chat','الرسايل'],['beh','ثواب وعقاب'],['tasks','المهام'],['week','خطة الأسبوع'],['rw','المكافآت'],['rep','التقرير'],['set','الإعدادات']];
+const TABS=[['ok','الموافقات'],['school','المدرسة 📚'],['chat','الرسايل'],['beh','ثواب وعقاب'],['tasks','المهام'],['week','خطة الأسبوع'],['rw','المكافآت'],['rep','التقرير'],['set','الإعدادات']];
 function vParent(tab){
   const pc=pendingTasks().length+pendingReqs().length;
   const tabs=TABS.map(([k,l])=>`<button class="tab" aria-current="${k===tab}" onclick="go('parent','${k}')">${l}${k==='ok'&&pc?`<span class="badge">${pc}</span>`:''}${k==='chat'&&unreadP()?`<span class="badge">${unreadP()}</span>`:''}</button>`).join('');
-  const body={ok:pOk,chat:pChat,beh:pBeh,tasks:pTasks,week:pWeek,rw:pRw,rep:pRep,set:pSet}[tab]();
+  const body={ok:pOk,school:pSchool,chat:pChat,beh:pBeh,tasks:pTasks,week:pWeek,rw:pRw,rep:pRep,set:pSet}[tab]();
   return `<div class="top"><button class="back" onclick="go('home')">خروج</button><h2>لوحة الأهل</h2></div><nav class="tabs">${tabs}</nav>${body}`;
 }
 function kidTag(k){return `<b style="color:${k.color}">${AV(k,'mini')} ${esc(k.name)}</b>`}
@@ -700,7 +821,7 @@ function render(){
   if(!DEV&&view.name!=='setup')view={name:'setup'};
   if(view.name==='home'&&DEV&&DEV!=='p'&&kidById(DEV))view={name:'kid',arg:DEV};
   avCSS();app.innerHTML=view.name==='setup'?vSetup():
-view.name==='kid'?vKid(view.arg):view.name==='pin'?vPin():view.name==='parent'?vParent(view.arg||'ok'):vHome();
+view.name==='kid'?vKid(view.arg):view.name==='school'?vSchool(view.arg):view.name==='pin'?vPin():view.name==='parent'?vParent(view.arg||'ok'):vHome();
   trDom(app);updTimers();document.querySelectorAll('.chat').forEach(e=>e.scrollTop=e.scrollHeight);
 }
 function tick(){
