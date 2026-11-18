@@ -148,6 +148,10 @@ summary{cursor:pointer}
 .msg small{display:block;opacity:.75;font-size:.75rem}
 .lang{float:inline-end;border:2px solid var(--line);background:var(--surface);border-radius:99px;padding:4px 14px;font-weight:700;margin-top:6px}
 .wallet .bal{font-size:2.4rem;font-weight:800;color:var(--c)}
+.rwbal{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:5;margin-bottom:10px;border-color:var(--c);box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.rwbal .bal{font-size:2.4rem;font-weight:800;color:var(--c);line-height:1}
+.rw.off{opacity:.55}
+.rw.held{border-color:var(--warn)}
 .checks label:has(input:checked){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
 .sch-hd{background:#6F42C1;color:#fff;border-radius:24px;padding:18px 20px;margin-top:10px}
 .sch-hd h2{font-size:1.9rem;font-weight:800;color:#fff}
@@ -169,6 +173,17 @@ summary{cursor:pointer}
 .sch-it .chip.no{background:color-mix(in srgb,var(--bad) 15%,transparent)}
 .sch-it .st{display:block;margin-top:4px}
 .sch-ap{margin-top:4px;font-size:1.05rem}
+#alarm{position:fixed;inset:0;z-index:80;background:rgba(10,20,30,.72);display:grid;place-items:center;padding:20px}
+#alarm[hidden]{display:none}
+.al-box{background:var(--surface);color:var(--ink);border-radius:28px;padding:26px 22px;width:min(460px,100%);text-align:center;border:6px solid var(--c)}
+@keyframes alp{from{transform:scale(1)}to{transform:scale(1.18)}}
+@media (prefers-reduced-motion:reduce){.al-e{animation:none!important}}
+.al-e{font-size:4.5rem;line-height:1.1;display:inline-block;animation:alp .8s ease-in-out infinite alternate}
+.al-n{color:var(--c);font-weight:800;font-size:1.2rem}
+.al-t{font-size:1.6rem;font-weight:800;line-height:1.3;margin:8px 0}
+.al-s{color:var(--muted)}
+.al-b{display:grid;gap:10px;margin-top:16px}
+.al-b .btn{padding:14px;font-size:1.2rem;border-radius:16px}
 [dir=rtl] .sch-ap{text-align:right}
 .sch-ck.wait{background:color-mix(in srgb,var(--cc) 22%,transparent);font-size:1rem}
 [dir=rtl] .sch-it .t,[dir=rtl] .sch-it .n,[dir=rtl] .sch-tip{text-align:right}
@@ -181,6 +196,7 @@ summary{cursor:pointer}
 <style id="kavs"></style>
 <div id="banner" role="alert"></div>
 <div id="toast" role="status"></div>
+<div id="alarm" role="alertdialog" aria-live="assertive" hidden></div>
 <main class="wrap" id="app"></main>
 <dialog id="dlg"><div class="dlg" id="dlgBody"></div></dialog>
 <script>
@@ -384,34 +400,51 @@ function upg6(){S.school??={};S.schMeta??={};const kid=S.kids.some(k=>k.id==='k2
     I('11','hw','Social Studies - Interactive Assignment','واجب تفاعلي');
     S.schMeta[kid]??={grade:'Year 3',tip:''}}
   S.ver=6}
-/* ---------- missed tasks: points deducted when the time passes ----------
-   Same result on every device: the status + a history entry stamped with the deadline,
-   so two phones open at once do not deduct twice. */
+/* ---------- missed tasks: the parent decides ----------
+   Nothing is written automatically when a task's time passes. A task the child did not tick
+   just shows up for review in the parent's Approvals tab; the parent picks:
+   done (full points) / half points / not done (points deducted).
+   No device writes on its own, so a phone or iPad holding old data cannot undo a decision. */
+const REV_DAYS=3;
 const dayStart=d=>{const x=new Date(d);x.setHours(0,0,0,0);return x.getTime()};
 const deadlineOf=(t,d)=>dayStart(d)+(m(T(t,d))+t.dur)*60000;
 function schDeadline(x){const d=ymd(x.wk);d.setHours(0,0,0,0);d.setDate(d.getDate()+(x.day==null?5:x.day+1));return d.getTime()}
-function penal(kid,p,reason,d,ts){const k=kidById(kid);if(!k)return;k.points=Math.max(0,k.points-p);S.history.push({d,ts,kid,pts:-p,reason});if(S.history.length>1500)S.history.splice(0,500)}
-function expireTasks(){
-  if(!S||!ready||!S.expFrom)return;
-  const now=Date.now(),from=S.expFrom,mine=[];let ch=0;
-  for(let i=0;i<=2;i++){const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()-i);const key=dkey(d);
-    if(dayStart(d)+86400000<=from)continue;
-    S.kids.forEach(k=>kidTasks(k,d).forEach(t=>{const p=P(t,k.id);if(!p||t.rate||st(k.id,t.id,key))return;
-      const dl=deadlineOf(t,d);if(dl>now||dl<=from)return;
-      setSt(k.id,t.id,'expired',key);penal(k.id,p,'فاتت: '+t.title,key,dl);ch=1;if(k.id===DEV)mine.push([t.title,p])}))}
-  for(const id in S.school||{}){const x=S.school[id];if(!x.pts||!kidById(x.kid)||schSt(x))continue;
-    const dl=schDeadline(x);if(dl>now||dl<=from)continue;
-    x.done='x';x.lost=x.pts;x.dl=dl;penal(x.kid,x.pts,'📚 فاتت: '+x.title,dkey(new Date(dl-60000)),dl);ch=1;if(x.kid===DEV)mine.push([x.title,x.pts])}
-  if(ch){save();softRender();if(mine.length){const tot=mine.reduce((a,x)=>a+x[1],0);toast(mine.length===1?L(`⌛ فاتتك ${mine[0][0]} واتخصم ${tot} نقطة`,`⌛ Missed ${mine[0][0]}: −${tot} pts`):L(`⌛ فاتتك ${mine.length} مهام واتخصم ${tot} نقطة`,`⌛ Missed ${mine.length} tasks: −${tot} pts`))}}
-}
-function missedList(){const c=new Date();c.setDate(c.getDate()-2);const cut=dkey(c),o=[];
-  for(const d in S.log)if(d>=cut)for(const kid in S.log[d])for(const tid in S.log[d][kid])if(S.log[d][kid][tid]==='expired'){const t=S.tasks.find(x=>x.id===tid);if(t&&kidById(kid))o.push({d,kid,t})}
-  return o.sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:m(T(b.t))-m(T(a.t)))}
-const missedSch=()=>{const c=new Date();c.setDate(c.getDate()-2);const cut=dayStart(c);return Object.entries(S.school||{}).filter(([,x])=>x.done==='x'&&kidById(x.kid)&&(x.dl||0)>=cut).map(([id,x])=>({...x,id}))};
-function lateOk(d,kid,tid,full){const t=S.tasks.find(x=>x.id===tid);if(!t||st(kid,tid,d)!=='expired')return;const p=P(t,kid),g=full?2*p:p;
-  setSt(kid,tid,full?'done':'excused',d);addPts(kid,g,(full?'اتعملت: ':'رجوع خصم: ')+t.title);save();render();toast('+'+g+' '+L('نقطة','pts'))}
-function schLateOk(id,full){const x=S.school?.[id];if(!x||x.done!=='x')return;const back=x.lost??x.pts??0,g=back+(full?x.pts||0:0);
-  if(full){x.done=1;x.got=x.pts||0}else x.done='e';delete x.lost;addPts(x.kid,g,(full?'📚 اتعملت: ':'📚 رجوع خصم: ')+x.title);save();if(dlg.open)closeDlg();render();toast('+'+g+' '+L('نقطة','pts'))}
+const schPastDue=x=>schDeadline(x)<=Date.now();
+function reviewList(){const o=[],from=S.expFrom;if(!from)return o;const now=Date.now(),old=new Date();old.setDate(old.getDate()-(REV_DAYS-1));const cut=dayStart(old);
+  for(let i=0;i<REV_DAYS;i++){const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()-i);const key=dkey(d);if(dayStart(d)+86400000<=from)continue;
+    S.kids.forEach(k=>kidTasks(k,d).forEach(t=>{const p=P(t,k.id);if(!p||t.rate)return;const s=st(k.id,t.id,key);if(s&&s!=='expired')return;
+      const dl=deadlineOf(t,d);if(dl>now)return;if(!s&&(dl<=from||(t.ct&&dl<t.ct)))return;
+      o.push({type:'t',d:key,kid:k.id,t,p,pre:s==='expired'?p:0,dl})}))}
+  for(const id in S.school||{}){const x=S.school[id];if(!x.pts||!kidById(x.kid))continue;const s=schSt(x),dl=schDeadline(x);if(dl>now||dl<cut)continue;
+    if((s===''&&dl>from)||(s==='miss'&&!x.rv))o.push({type:'s',id,x,kid:x.kid,p:x.pts,pre:s==='miss'?(x.lost??x.pts):0,dl,d:dkey(new Date(dl-60000))})}
+  return o.sort((a,b)=>b.dl-a.dl)}
+/* apply one decision without saving; returns the change in points */
+function decideT(d,kid,tid,mode){const t=S.tasks.find(x=>x.id===tid);if(!t)return 0;const s=st(kid,tid,d);if(s&&s!=='expired')return 0;
+  const p=P(t,kid),pre=s==='expired'?p:0,target=mode==='full'?p:mode==='half'?Math.round(p/2):-p,delta=target+pre;
+  setSt(kid,tid,mode==='no'?'missed':'done',d);
+  if(delta)addPts(kid,delta,(mode==='full'?'اتعملت: ':mode==='half'?'نص نقط: ':'ماعملهاش: ')+t.title);
+  return delta}
+function decideS(id,mode){const x=S.school?.[id];if(!x)return 0;const s=schSt(x);if(s!==''&&s!=='miss'&&s!=='no')return 0;
+  const p=x.pts||0,pre=s==='miss'?(x.lost??p):0,target=mode==='full'?p:mode==='half'?Math.round(p/2):-p,delta=target+pre;
+  if(mode==='no'){x.done='x';x.lost=p}else{x.done=1;x.got=target;delete x.lost}x.rv=1;
+  if(delta)addPts(x.kid,delta,'📚 '+(mode==='full'?'اتعملت: ':mode==='half'?'نص نقط: ':'ماعملهاش: ')+x.title);
+  return delta}
+const dTxt=v=>(v>0?'+':v<0?'−':'')+Math.abs(v)+' '+L('نقطة','pts');
+function revDecide(d,kid,tid,mode){const v=decideT(d,kid,tid,mode);save();if(dlg.open)closeDlg();render();toast(v?dTxt(v):L('اتسجل','Saved'))}
+function schDecide(id,mode){const v=decideS(id,mode);save();if(dlg.open)closeDlg();render();toast(v?dTxt(v):L('اتسجل','Saved'))}
+function revAll(day,mode){const its=reviewList().filter(r=>r.d===day);if(!its.length)return;
+  if(!confirm(mode==='full'?L(`تسجّل ${its.length} مهمة إنها اتعملت؟`,`Mark ${its.length} tasks as done?`):L(`تسجّل ${its.length} مهمة إنها ماتعملتش وتتخصم نقطها؟`,`Mark ${its.length} tasks as not done and deduct their points?`)))return;
+  its.forEach(r=>r.type==='t'?decideT(r.d,r.kid,r.t.id,mode):decideS(r.id,mode));save();render();toast(L('اتسجل','Saved'))}
+/* the three choices; for tasks the old version already deducted, "not done" keeps the deduction */
+function revBtns(call,p,pre){return `<div class="row" style="margin-top:8px"><button class="btn good" onclick="${call}'full')">${L('عملها','Done')} +${p}</button><button class="btn warn" onclick="${call}'half')">${L('نص النقط','Half')} +${Math.round(p/2)}</button><button class="btn bad" onclick="${call}'no')">${pre?L('ماعملهاش (الخصم يفضل)','Not done (keep deduction)'):L('ماعملهاش','Not done')+' −'+p}</button></div>`}
+function dayName(key){const d=ymd(key),y=new Date();y.setDate(y.getDate()-1);return key===today()?L('النهارده','Today'):key===dkey(y)?L('امبارح','Yesterday'):L(DAYS[d.getDay()],DAYS_EN[d.getDay()])+' '+d.toLocaleDateString(L('ar-EG','en-GB'),{day:'numeric',month:'long'})}
+function reviewHTML(list){if(!list.length)return '';const days=[...new Set(list.map(r=>r.d))];
+  return `<h3>⌛ ${L('فاتت ومحتاجة قرارك','Missed: your decision')}</h3><p class="muted" style="margin-top:-6px">${L('مهام فات ميعادها والولد معلّمش عليها. اختار: عملها، نص النقط، أو ماعملهاش (تتخصم نقطها). اللي تقرره مش هيرجع لك تاني.','Tasks whose time passed without a tick. Choose: done, half, or not done (points deducted). Decided items do not come back.')}</p>`+
+  days.map(day=>{const its=list.filter(r=>r.d===day);
+    return `<div class="card" style="margin:12px 0 8px;background:var(--bg)"><div class="row"><b class="grow">${dayName(day)} <span class="muted">(${its.length})</span></b><button class="btn good" style="padding:5px 10px" onclick="revAll('${day}','full')">${L('الكل اتعمل','All done')}</button><button class="btn bad" style="padding:5px 10px" onclick="revAll('${day}','no')">${L('الكل ماتعملش','None done')}</button></div></div>`+
+    its.map(r=>{const k=kidById(r.kid),pre=r.pre?`<div class="muted">${L(`اتخصم منه ${r.pre} تلقائي قبل التحديث، وهترجع لو اخترت عملها أو نص.`,`${r.pre} pts were auto-deducted before the update; refunded if you choose done or half.`)}</div>`:'';
+      return r.type==='t'?`<div class="card" style="margin-bottom:8px"><div>${kidTag(k)} ${esc(r.t.emoji)} ${esc(r.t.title)} <span class="muted">${fmt(T(r.t,ymd(r.d)))}</span></div>${pre}${revBtns(`revDecide('${r.d}','${r.kid}','${r.t.id}',`,r.p,r.pre)}</div>`
+       :`<div class="card" style="margin-bottom:8px"><div>${kidTag(k)} 📚 <span class="raw" dir="auto">${esc(r.x.title)}</span></div>${pre}${revBtns(`schDecide('${r.id}',`,r.p,r.pre)}</div>`}).join('')}).join('')}
 function upg7(){S.school??={};for(const id in S.school){const x=S.school[id];if(x.pts==null)Object.assign(x,scDef(x.cat))}S.ver=7}
 function weekPct(k){let tot=0,done=0;for(let i=1;i<=7;i++){const d=new Date();d.setDate(d.getDate()-i);const key=dkey(d);kidTasks(k,d).filter(t=>P(t,k.id)>0).forEach(t=>{tot++;if(st(k.id,t.id,key)==='done')done++})}
   const d=new Date(),key=today();kidTasks(k,d).filter(t=>P(t,k.id)>0&&m(T(t))+t.dur<=nowM()).forEach(t=>{tot++;if(st(k.id,t.id,key)==='done')done++});
@@ -442,7 +475,7 @@ const DEL={del:1};
 const clean=o=>JSON.parse(JSON.stringify(o));
 const isObj=x=>x&&typeof x==='object'&&!Array.isArray(x);
 function diff(a,b,p,out){
-  if(isObj(a)&&isObj(b)){for(const k in b){if(!(k in a))out.push([p.concat(k),b[k]]);else diff(a[k],b[k],p.concat(k),out)}for(const k in a)if(!(k in b))out.push([p.concat(k),DEL]);return}
+  if(isObj(a)&&isObj(b)){for(const k in b){if(!(k in a)){if(isObj(b[k])&&Object.keys(b[k]).length)diff({},b[k],p.concat(k),out);else out.push([p.concat(k),b[k]])}else diff(a[k],b[k],p.concat(k),out)}for(const k in a)if(!(k in b))out.push([p.concat(k),DEL]);return}
   const ja=JSON.stringify(a),jb=JSON.stringify(b);if(ja===jb)return;
   if(Array.isArray(a)&&Array.isArray(b)&&b.length>a.length&&JSON.stringify(b.slice(0,a.length))===ja){out.push([p,{__u:b.slice(a.length)}]);return}
   out.push([p,b])}
@@ -511,7 +544,7 @@ function vHome(){
   const kids=S.kids.map(k=>{const list=kidTasks(k).filter(t=>P(t,k.id)>0),done=list.filter(t=>st(k.id,t.id)==='done').length,pct=list.length?Math.round(done/list.length*100):0,R=rank(k);
     return `<button class="kid" style="--c:${k.color}" onclick="enterKid('${k.id}')">${AV(k,'av')}<span class="nm">${esc(k.name)} <span class="muted" style="font-size:.95rem;font-weight:600">${R.r[1]} ${R.r[2]}</span></span>
     <span class="meta">${unreadK(k.id)?'<span>💬 '+unreadK(k.id)+'</span>':''}<span>💰 ${k.points}</span><span>🔥 ${streak(k)}</span><span>${done}/${list.length}</span></span><span class="bar"><i style="width:${pct}%"></i></span></button>`}).join('');
-  const pc=pendingTasks().length+pendingReqs().length+pendingSch().length;
+  const pc=pendingTasks().length+pendingReqs().length+pendingSch().length+reviewList().length;
   return `<button class="lang raw" onclick="setLang()">${L('English','عربي')}</button><h1>يومي</h1><p class="sub">${DAYS[d.getDay()]}، ${d.toLocaleDateString(L('ar-EG','en-GB'),{day:'numeric',month:'long'})}</p>
   ${arc(null)}<section class="kids">${kids}</section>
   <button class="parentBtn" onclick="pinBuf='';go('pin')">دخول الأهل${pc?`<span class="badge">${pc}</span>`:''}</button>`;
@@ -543,7 +576,7 @@ function vKid(id){
   const cur=al.find(t=>n>=m(T(t))&&n<m(T(t))+t.dur&&P(t,k.id)>0&&!st(k.id,t.id))||al.find(t=>n>=m(T(t))&&n<m(T(t))+t.dur),next=al.find(t=>m(T(t))>n);
   let now;
   if(cur){const s=st(k.id,cur.id),left=m(T(cur))+cur.dur-n,p=P(cur,k.id);
-    now=`<div class="now"><div class="lbl">دلوقتي</div><div class="big">${esc(cur.emoji)}</div><div class="ttl">${esc(cur.title)}</div><div class="when">${L(`فاضل ${left} دقيقة`,`${left} min left`)}${p?L(`، وليك ${p} نقطة`,`, worth ${p} pts`)+(!s&&!cur.rate&&S.expFrom?L(` (لو فاتت تتخصم ${p})`,` (−${p} if missed)`):''):''}${cur.bonus?L(` و${cur.bonus} زيادة لو اتميزت`,` (+${cur.bonus} if you excel)`):''}${cur.speed?L(`. لو جهزت في ${cur.speed} دقايق تاخد ${cur.speedPts} زيادة ⚡`,`. Ready within ${cur.speed} min = +${cur.speedPts} ⚡`):''}</div>
+    now=`<div class="now"><div class="lbl">دلوقتي</div><div class="big">${esc(cur.emoji)}</div><div class="ttl">${esc(cur.title)}</div><div class="when">${L(`فاضل ${left} دقيقة`,`${left} min left`)}${p?L(`، وليك ${p} نقطة`,`, worth ${p} pts`)+(!s&&!cur.rate&&S.expFrom?L(` (لو فاتت ممكن تتخصم ${p})`,` (may cost ${p} if missed)`):''):''}${cur.bonus?L(` و${cur.bonus} زيادة لو اتميزت`,` (+${cur.bonus} if you excel)`):''}${cur.speed?L(`. لو جهزت في ${cur.speed} دقايق تاخد ${cur.speedPts} زيادة ⚡`,`. Ready within ${cur.speed} min = +${cur.speedPts} ⚡`):''}</div>
     ${s==='done'?'<div class="state">✓ عملتها، برافو!</div>':s==='pending'?'<div class="state">مستني موافقة الأهل</div>':p?actBtn(k,cur,true):''}</div>`}
   else if(next){const d=m(T(next))-n,h=Math.floor(d/60),mm=d%60;
     now=`<div class="now"><div class="lbl">اللي جاي</div><div class="big">${esc(next.emoji)}</div><div class="ttl">${esc(next.title)}</div><div class="when">${L(`الساعة ${fmt(T(next))}، بعد ${h?h+' ساعة و':''}${mm} دقيقة`,`At ${fmt(T(next))}, in ${h?h+' h ':''}${mm} min`)}</div></div>`}
@@ -553,14 +586,17 @@ function vKid(id){
     else if(!p)act='<span class="chip">بدون نقط</span>';
     else if(s==='done')act='<span class="chip ok">✓</span>';
     else if(s==='pending')act='<span class="chip wait">مستني</span>';
-    else if(s==='expired')act=`<span class="chip no" dir="ltr">−${p}</span>`;
+    else if(s==='expired'||s==='missed')act=`<span class="chip no" dir="ltr">−${p}</span>`;
     else if(s==='excused')act=`<span class="chip">${L('اتسامح','Excused')}</span>`;
     else act=actBtn(k,t);
-    const note=s==='rejected'?'<span class="chip no">الأهل قالوا لسه</span>':s==='expired'?`<span class="chip no">${L('فاتت واتخصمت','Missed, deducted')}</span>`:(!s&&late&&p&&!t.rate?'<span class="chip no">فات معادها</span>':'');
+    const note=s==='rejected'?'<span class="chip no">الأهل قالوا لسه</span>':s==='missed'?`<span class="chip no">${L('ماعملتهاش','Not done')}</span>`:s==='expired'?`<span class="chip no">${L('فاتت واتخصمت','Missed, deducted')}</span>`:(!s&&late&&p&&!t.rate?'<span class="chip no">فات معادها</span>':'');
     return `<li class="${t===cur?'cur':''}"><span class="tm">${fmt(T(t))}</span><span class="tt">${esc(t.emoji)} ${esc(t.title)}<br><span class="pts">${p?p+' نقطة':''}${t.bonus?' + '+t.bonus+' تميّز':''}${t.speed?' + '+t.speedPts+' سرعة ⚡':''}</span> ${note}</span>${act}</li>`}).join('');
-  const store=S.rewards.map(r=>{const pend=S.requests.some(q=>q.kid===k.id&&q.rid===r.id&&q.status==='pending');
-    return `<div class="rw"><span class="e">${esc(r.emoji)}</span><b>${esc(r.title)}</b><span class="c">${r.num} نقطة</span>
-    ${pend?'<span class="chip wait">مستني موافقة</span>':`<button class="btn" ${k.points<r.num?'disabled':''} onclick="askReward('${k.id}','${r.id}')">${k.points<r.num?'فاضل '+(r.num-k.points):'اطلبها'}</button>`}</div>`}).join('');
+  const av=availPts(k),held=heldPts(k.id);
+  const store=S.rewards.map(r=>{const pq=S.requests.find(q=>q.kid===k.id&&q.rid===r.id&&q.status==='pending'),can=av>=r.num;
+    return `<div class="rw ${pq?'held':can?'':'off'}"><span class="e">${esc(r.emoji)}</span><b>${esc(r.title)}</b><span class="c">${r.num} نقطة</span>
+    ${pq?`<span class="chip wait">${L('مستني موافقة','Awaiting approval')}</span><button class="btn ghost" style="padding:4px 10px" onclick="cancelReq('${pq.id}')">${L('إلغاء الطلب','Cancel request')}</button>`
+      :can?`<span class="c">${L(`لو اخترتها يفضل معاك ${av-r.num}`,`You'd have ${av-r.num} left`)}</span><button class="btn" onclick="askReward('${k.id}','${r.id}')">اطلبها</button>`
+      :`<button class="btn" disabled>${L(`فاضل ${r.num-av}`,`Need ${r.num-av} more`)}</button>`}</div>`}).join('');
   const R=rank(k);
   const wk=[...Array(7)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return dkey(d)});
   const mine=S.history.filter(h=>h.kid===k.id);
@@ -575,14 +611,19 @@ function vKid(id){
   <h3>محفظتي 💰</h3><div class="card wallet"><div class="row"><span class="grow"><span class="bal">${k.points}</span> نقطة</span><span class="muted">الأسبوع ده +${earned}<br>صرفت ${spent}</span></div>
   <div class="muted" style="margin-top:6px">${L('رتبتك','Your rank')} ${R.r[1]} ${R.r[2]}${R.next?L(`، فاضلك ${R.next[0]-R.life} نقطة وتبقى ${R.next[1]} ${R.next[2]}`,`, ${R.next[0]-R.life} pts to ${R.next[1]} ${R.next[2]}`):L('، أعلى رتبة!',', top rank!')}</div>
   <div class="bar" style="margin:6px 0 10px"><i style="width:${R.pct}%"></i></div><div class="list">${moves||'<span class="muted">لسه مفيش حركة</span>'}</div></div>
-  <h3>المكافآت</h3><div class="store">${store}</div></div>`;
+  <h3>المكافآت</h3><div class="card rwbal"><div class="row" style="flex-wrap:nowrap"><span style="font-size:2rem">💰</span><span class="grow"><b>${L('رصيدك المتاح للمكافآت','Points you can spend')}</b>${held?`<br><span class="muted" style="font-size:.9rem">${L(`${k.points} معاك، منهم ${held} محجوزين لطلبات مستنية بابا وماما`,`${k.points} total, ${held} held for requests awaiting approval`)}</span>`:''}</span><span class="bal">${av}</span></div></div>
+  <div class="store">${store}</div></div>`;
 }
 function markDone(kid,tid,note){setSt(kid,tid,'pending');if(note)S.notes[today()+'|'+kid+'|'+tid]=note;save();if(dlg.open)closeDlg();render();toast('تمام! اتبعتت للأهل يوافقوا')}
 function startSpeed(kid,tid){S.timers[today()+'|'+kid+'|'+tid]=Date.now();save();render()}
 function stopSpeed(kid,tid){const key=today()+'|'+kid+'|'+tid,sec=Math.round((Date.now()-S.timers[key])/1000);delete S.timers[key];S.speed[key]=sec;const t=S.tasks.find(x=>x.id===tid),fast=sec<=t.speed*60;markDone(kid,tid,'⚡ '+mmss(sec)+(fast?' سريع':''));toast(fast?'برافو! جهزت في '+mmss(sec)+' ⚡':'جهزت في '+mmss(sec)+'، المرة الجاية أسرع!')}
 function updTimers(){document.querySelectorAll('.tmr').forEach(e=>e.textContent=mmss(Math.max(0,Math.round((Date.now()-+e.dataset.s)/1000))))}
 setInterval(updTimers,1000);
-function askReward(kid,rid){S.requests.push({id:uid(),kid,rid,status:'pending',d:today()});save();render();toast('طلبك اتبعت للأهل')}
+const heldPts=kid=>S.requests.filter(q=>q.kid===kid&&q.status==='pending').reduce((a,q)=>a+(q.cost??S.rewards.find(r=>r.id===q.rid)?.num??0),0);
+const availPts=k=>Math.max(0,k.points-heldPts(k.id));
+function cancelReq(id){const q=S.requests.find(x=>x.id===id);if(!q||q.status!=='pending')return;q.status='cancel';save();render();const k=kidById(q.kid);toast(L(`اتلغى، رصيدك المتاح بقى ${availPts(k)}`,`Cancelled, you can spend ${availPts(k)}`))}
+function askReward(kid,rid){const k=kidById(kid),r=S.rewards.find(x=>x.id===rid);if(!k||!r)return;const av=availPts(k);if(av<r.num){toast(L(`رصيدك المتاح ${av} بس`,`You only have ${av}`));return}
+  S.requests.push({id:uid(),kid,rid,cost:r.num,status:'pending',d:today()});save();render();toast(L(`اتطلبت! اتحجز ${r.num} نقطة، وفاضل معاك ${av-r.num}`,`Requested! ${r.num} held, ${av-r.num} left`))}
 
 /* ---------- school weekly tasks ---------- */
 /* [key, Arabic, English, color, emoji, default points, default excellence bonus] */
@@ -608,16 +649,16 @@ function schDayTxt(x){if(x.day==null)return '';const d=ymd(x.wk);d.setDate(d.get
   return L(DAYS[d.getDay()],DAYS_EN[d.getDay()].slice(0,3))+' '+d.toLocaleDateString(L('ar-EG','en-GB'),{day:'numeric'})}
 function schRow(x,col,who){const dt=schDayTxt(x),isT=dt===L('النهارده','Today'),s=schSt(x),p=x.pts||0;
   const ptsTxt=s==='done'?(x.got!=null?`<span class="chip ok" dir="ltr">✓ +${x.got}</span>`:''):s==='miss'?`<span class="chip no" dir="ltr">−${x.lost??p}</span>`:s==='exc'?'':p?`<span class="chip" dir="ltr">+${p}${x.bonus?' · 🌟+'+x.bonus:''}</span>`:'';
-  const stTxt=s==='wait'?`<span class="chip wait">${L('مستني موافقة','Awaiting approval')}</span>`:s==='no'?`<span class="chip no">${L('الأهل قالوا لسه','Parents said not yet')}</span>`:s==='miss'?`<span class="chip no">${L('فاتت واتخصمت','Missed, deducted')}</span>`:s==='exc'?`<span class="chip">${L('اتسامح','Excused')}</span>`:'';
+  const stTxt=s==='wait'?`<span class="chip wait">${L('مستني موافقة','Awaiting approval')}</span>`:s==='no'?`<span class="chip no">${L('الأهل قالوا لسه','Parents said not yet')}</span>`:s==='miss'?`<span class="chip no">${L('ماعملهوش','Not done')}</span>`:s===''&&p&&schPastDue(x)?`<span class="chip no">${L('فات ميعاده، مستني بابا وماما','Past due, waiting for parents')}</span>`:s==='exc'?`<span class="chip">${L('اتسامح','Excused')}</span>`:'';
   return `<div class="sch-it ${s==='done'?'done':''}" style="--cc:${col}"><button class="sch-ck ${s==='wait'?'wait':''}" aria-pressed="${s==='done'}" aria-label="${esc(x.title)}" onclick="${who==='p'?'schAct':'togSch'}('${x.id}')">${s==='done'?'✓':s==='wait'?'⏳':s==='miss'?'⌛':''}</button>
   <span><span class="raw"><span class="t" dir="auto">${esc(x.title)}</span>${x.note?`<span class="n" dir="auto">${esc(x.note)}</span>`:''}</span>${stTxt?`<span class="st">${stTxt}</span>`:''}</span>
   <span class="side">${dt?`<span class="chip ${isT&&s!=='done'?'wait':''}">${dt}</span>`:''}${ptsTxt}${who==='p'?`<button class="btn ghost" style="padding:3px 10px" onclick="editSch('${x.id}')">${L('تعديل','Edit')}</button>`:''}</span></div>`}
 function schBtns(id,x){const p=x.pts||0,b=x.bonus||0;
   return `<div class="row" style="margin-top:8px"><button class="btn good" onclick="okSch('${id}',1)">${L('تمام','OK')} +${p}</button>${b?`<button class="btn good" onclick="okSch('${id}',1,1)">${L('ممتاز','Excellent')} +${p+b}</button>`:''}<button class="btn warn" onclick="okSch('${id}',.5)">${L('نص النقط','Half')} +${Math.round(p/2)}</button>${x.done==='p'?`<button class="btn bad" onclick="noSch('${id}')">${L('لسه','Not yet')}</button>`:''}</div>`}
 function schAct(id){const x=S.school?.[id];if(!x)return;const k=kidById(x.kid),s=schSt(x);
-  if(s==='miss'){const b=x.lost??x.pts??0;openDlg(`<h2 class="raw" dir="auto">${esc(x.title)}</h2><p class="muted" style="margin-top:4px">${k?kidTag(k)+' · ':''}${L(`فاتت واتخصم منه ${b} نقطة`,`Missed, ${b} pts deducted`)}</p>
-    <div class="row"><button class="btn good" onclick="schLateOk('${id}',1)">${L('اتعملت فعلاً','It was done')} +${b+(x.pts||0)}</button><button class="btn ghost" onclick="schLateOk('${id}',0)">${L('رجّع الخصم بس','Refund only')} +${b}</button></div>
-    <div class="row" style="margin-top:8px"><button class="btn ghost" onclick="closeDlg()">${L('إغلاق','Close')}</button></div>`);return}
+  if((s==='miss'||(s===''&&schPastDue(x)))&&x.pts){const pre=s==='miss'?(x.lost??x.pts):0;
+    openDlg(`<h2 class="raw" dir="auto">${esc(x.title)}</h2><p class="muted" style="margin-top:4px">${k?kidTag(k)+' · ':''}${s==='miss'?L(`اتسجل إنه ماعملهوش واتخصم ${pre} نقطة`,`Marked not done, ${pre} pts deducted`):L('فات ميعاده ومعلّمش عليه','Past due, not ticked')}</p>
+    ${revBtns(`schDecide('${id}',`,x.pts,pre)}<div class="row" style="margin-top:8px"><button class="btn ghost" onclick="closeDlg()">${L('إغلاق','Close')}</button></div>`);return}
   if(!(x.pts||0)){x.done=s==='done'?0:1;save();render();return}
   const stt=s==='done'?L(`اتعمل واتحسب له ${x.got??0} نقطة`,`Done, got ${x.got??0} pts`):s==='wait'?L('مستني موافقتك','Waiting for your approval'):s==='no'?L('قلت له لسه','You said not yet'):L('لسه ماعلّمش عليه','Not ticked yet');
   openDlg(`<h2 class="raw" dir="auto">${esc(x.title)}</h2><p class="muted" style="margin-top:4px">${k?kidTag(k)+' · ':''}${stt}</p>
@@ -651,11 +692,11 @@ function vSchool(id){const k=kidById(id);if(!k)return vHome();
   <div class="w" style="margin-top:6px">${L('الأسبوع','Week')}: ${wkLabelD(sun)}  |  ${L('علّم لما تخلص!','Check when done!')}</div>
   ${all.length?`<div class="bar" style="margin-top:10px"><i style="width:${pct}%;background:#FFD86B"></i></div><div class="w" style="margin-top:4px">${L(`خلصت ${done} من ${all.length}`,`${done} of ${all.length} done`)}${got?L(` · كسبت ${got} نقطة 💰`,` · earned ${got} pts 💰`):''}${wt?L(` · ⏳ ${wt} مستني موافقة`,` · ⏳ ${wt} awaiting approval`):''}</div>`:''}</div>
   ${schNav()}<div class="kpick" style="margin-top:8px">${chips}</div>
-  ${S.expFrom&&all.some(x=>x.pts)?`<div class="muted" style="margin-top:10px;font-size:.9rem">⚠️ ${L('علّم على كل بند في يومه، واللي من غير يوم لحد الخميس. البند اللي يفوت نقطه بتتخصم من رصيدك.','Tick each item on its day; items without a day by Thursday. Missed items cost their points.')}</div>`:''}
+  ${S.expFrom&&all.some(x=>x.pts)?`<div class="muted" style="margin-top:10px;font-size:.9rem">⚠️ ${L('علّم على كل بند في يومه، واللي من غير يوم لحد الخميس. لو فات من غير علامة، بابا وماما يقرروا: تاخد نقطه، أو نصها، أو تتخصم.','Tick each item on its day; items without a day by Thursday. If one passes unticked, Dad & Mom decide: full points, half, or deducted.')}</div>`:''}
   ${empty?`<div class="card muted" style="margin-top:14px">${empty}</div>`:schList(its,'k')}
   <div class="sch-tip ${M.tip?'raw':''}" dir="auto">💡 ${M.tip?esc(M.tip):L('ابدأ بالامتحانات، بعدين الواجب، بعدين المشاريع!','Start with Quizzes first, then Homework, then Projects!')}</div></div>`}
 function togSch(id){const x=S.school?.[id];if(!x)return;const s=schSt(x),p=x.pts||0;
-  if(s==='miss'){toast(L('البند ده فات واتخصمت نقطه، كلّم بابا أو ماما','This one was missed and its points deducted, talk to Dad or Mom'));return}
+  if(s==='miss'){toast(L('بابا وماما سجلوا إنك ماعملتهوش واتخصمت نقطه','Dad & Mom marked this not done; points deducted'));return}
   if(s==='exc'){toast(L('بابا وماما سامحوك في البند ده','Dad & Mom excused this one'));return}
   if(s==='done'){if(p&&x.got!=null){toast(L('بابا وماما وافقوا عليها خلاص ✓','Already approved ✓'));return}x.done=0}
   else if(s==='wait')x.done=0;
@@ -717,6 +758,94 @@ function showSurah(kid,tid,i){const[n,ay,noB]=SURAHS[i];
   <div class="row"><button class="btn good" onclick="markDone('${kid}','${tid}','سورة ${n}')">قريتها ✓</button><button class="btn ghost" onclick="openRead('${kid}','${tid}')">سورة تانية</button></div>`);
 }
 
+/* ---------- alarms the parent sets on any task, for each child ----------
+   kinds: start = when the task starts · end = N min before its time runs out
+          before = N min before it starts · clock = at a set time of day
+   Rings only on the child's own tablet, only while the app is open there,
+   and stays quiet if the child already ticked the task. */
+const AL_KINDS=[['start','على الميعاد','When it starts'],['after','بعد الميعاد بـ','After its time by'],['end','قبل ما وقتها يخلص بـ','Before its time runs out by'],['before','قبل الميعاد بـ','Before it starts by'],['clock','في ساعة معينة','At a set time']];
+function alAt(t,a,d=new Date()){const s0=m(T(t,d));return a.at==='start'?s0:a.at==='after'?s0+(+a.min||0):a.at==='before'?s0-(+a.min||0):a.at==='end'?s0+t.dur-(+a.min||0):m(a.time||'00:00')}
+function alLabel(t,a){const mn=+a.min||0;return a.at==='start'?L('على الميعاد','at start'):a.at==='after'?L(`بعد الميعاد بـ ${mn} دقيقة`,`${mn} min after start`):a.at==='before'?L(`قبلها بـ ${mn} دقيقة`,`${mn} min before`):a.at==='end'?L(`قبل ما تفوت بـ ${mn} دقيقة`,`${mn} min before it ends`):L('الساعة ','at ')+fmt(a.time||'00:00')}
+function alText(t,a){const mn=+a.min||0,tt=t.emoji+' '+t.title;
+  return a.at==='start'?L('⏰ دلوقتي وقت: ','⏰ Time for: ')+tt:a.at==='after'?L(`⏳ عدّى ${mn} دقيقة ولسه معلّمتش على: `,`⏳ ${mn} min passed, not ticked yet: `)+tt:a.at==='before'?L(`⏰ بعد ${mn} دقيقة: `,`⏰ In ${mn} min: `)+tt:a.at==='end'?L(`⏳ فاضل ${mn} دقيقة وتفوت: `,`⏳ ${mn} min left for: `)+tt:L('⏰ متنساش: ','⏰ Don’t forget: ')+tt}
+function dueAlarms(kid,d=new Date()){const o=[],dw=d.getDay();
+  S.tasks.forEach(t=>{if(!t.alarms?.length||!t.kids.includes(kid)||!t.days.includes(dw))return;
+    t.alarms.forEach(a=>{if((a.kids||[]).includes(kid))o.push({t,a,at:alAt(t,a,d)})})});return o.sort((x,y)=>x.at-y.at)}
+const kidHasAlarms=kid=>S.tasks.some(t=>t.alarms?.some(a=>(a.kids||[]).includes(kid)));
+let alLoop=null,alStop=null;
+function alSound(){try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}
+  try{audio??=new (window.AudioContext||window.webkitAudioContext)();if(audio.state!=='running')audio.resume();
+    [0,.18,.36,.54].forEach((s,i)=>{const o=audio.createOscillator(),g=audio.createGain();o.type='square';o.frequency.value=i%2?660:990;g.gain.setValueAtTime(.25,audio.currentTime+s);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+s+.16);o.connect(g).connect(audio.destination);o.start(audio.currentTime+s);o.stop(audio.currentTime+s+.17)})}catch(e){}
+  navigator.vibrate?.([400,150,400])}
+function ring(t,a,kid,test){if(dlg.open)closeDlg();const el=document.getElementById('alarm'),k=kidById(kid),n=nowM(),started=n>=m(T(t)),s=st(kid,t.id);
+  const act=!test&&started&&!s&&P(t,kid)>0&&!t.rate?(t.read?`openRead('${kid}','${t.id}')`:t.speed?`startSpeed('${kid}','${t.id}')`:`markDone('${kid}','${t.id}')`):'';
+  el.innerHTML=`<div class="al-box" style="--c:${k?.color||'var(--accent)'}"><div class="al-e">${esc(t.emoji)}</div><div class="al-n">${k?esc(k.name):''}</div>
+    <div class="al-t">${esc(a.msg||alText(t,a))}</div>${a.msg?`<div class="al-s">${esc(t.emoji+' '+t.title)}</div>`:''}
+    <div class="al-b">${act?`<button class="btn good" onclick="alOff();${act}">${L('خلصتها ✓','Done ✓')}</button>`:''}<button class="btn" onclick="alOff()">${L('تمام، فهمت','OK, got it')}</button></div></div>`;
+  trDom(el);el.hidden=false;alSound();clearInterval(alLoop);clearTimeout(alStop);alLoop=setInterval(alSound,1600);alStop=setTimeout(()=>clearInterval(alLoop),test?6000:120000)}
+function alOff(){clearInterval(alLoop);clearTimeout(alStop);document.getElementById('alarm').hidden=true}
+function alarmCheck(){if(!S||!DEV||DEV==='p'||!kidById(DEV)||!['kid','school','home'].includes(view.name))return;
+  if(!document.getElementById('alarm').hidden)return;const n=nowM(),key=today();
+  for(const {t,a,at} of dueAlarms(DEV)){const id=key+'|al|'+a.id+'|'+DEV;if(NOTI[id]||n<at||n>=at+5)continue;NOTI[id]=1;saveNoti();
+    const s=st(DEV,t.id);if(s==='done'||s==='pending'||s==='missed')continue;ring(t,a,DEV);break}}
+setInterval(alarmCheck,5000);
+/* keep the child's tablet screen on so alarms can ring (best on the charger) */
+let wl=null;
+async function keepAwake(){try{if(!('wakeLock' in navigator)||!S)return;const want=!!(DEV&&DEV!=='p'&&kidById(DEV)&&(S.awake?.[DEV]??true)&&kidHasAlarms(DEV));
+  if(want&&!wl&&document.visibilityState==='visible'){wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',()=>{wl=null})}
+  else if(!want&&wl){await wl.release();wl=null}}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){keepAwake();alarmCheck()}});
+document.addEventListener('pointerdown',()=>{try{audio??=new (window.AudioContext||window.webkitAudioContext)();if(audio.state!=='running')audio.resume()}catch(e){}keepAwake()});
+/* parent: Alarms tab — pick the child, then "+ new alarm": choose the task from a list, when it rings, and write the message */
+const kidAlarms=kid=>S.tasks.flatMap(t=>(t.alarms||[]).filter(a=>(a.kids||[]).includes(kid)).map(a=>({t,a,at:alAt(t,a,ymd(today()))}))).sort((x,y)=>x.at-y.at);
+const hm=v=>pad2(Math.floor(((v%1440)+1440)%1440/60))+':'+pad2(((v%60)+60)%60);
+function pAlarms(){
+  const pick=S.kids.map(k=>`<button style="--c:${k.color}" aria-pressed="${k.id===selKid}" onclick="selKid='${k.id}';render()">${AV(k,'mini')} ${esc(k.name)}</button>`).join('');
+  const k=kidById(selKid)||S.kids[0],list=kidAlarms(k.id),aw=S.awake?.[k.id]??true,dw=new Date().getDay();
+  const rows=list.map(({t,a,at})=>{const others=(a.kids||[]).filter(id=>id!==k.id).map(id=>kidById(id)?.name).filter(Boolean);
+    return `<div class="card row"><span class="muted" style="width:4.8em">${fmt(hm(at))}</span><span class="grow"><b>${esc(t.emoji)} ${esc(t.title)}</b><br><span class="muted">${alLabel(t,a)} · ${t.days.length===7?L('كل يوم','every day'):t.days.map(d=>L(DAYS[d],DAYS_EN[d].slice(0,3))).join('، ')}${t.days.includes(dw)?'':L(' (مش النهارده)',' (not today)')}${others.length?L(' · وكمان ',' · also ')+others.map(esc).join('، '):''}</span>${a.msg?`<br><span class="raw" dir="auto">💬 ${esc(a.msg)}</span>`:''}</span>
+    <button class="btn ghost" onclick="editAlarm('${t.id}','${a.id}')">${L('تعديل','Edit')}</button></div>`}).join('');
+  return `<div class="kpick">${pick}</div>
+  <button class="btn" style="width:100%;padding:12px;margin:12px 0" onclick="editAlarm()">+ ${L('منبه جديد لـ','New alarm for ')}${esc(k.name)}</button>
+  <div class="list">${rows||`<div class="card muted">${L('لسه مفيش منبهات لـ','No alarms yet for ')}${esc(k.name)}.</div>`}</div>
+  <label class="card row" style="margin-top:12px;gap:8px"><input type="checkbox" ${aw?'checked':''} onchange="S.awake??={};S.awake['${k.id}']=this.checked;save();toast(L('اتحفظ','Saved'))"><span class="grow">${L(`خلّي شاشة تابلت ${esc(k.name)} منوّرة عشان المنبهات ترن (يفضل يكون على الشاحن)`,`Keep ${esc(k.name)}’s tablet screen on so alarms can ring (best on the charger)`)}</span></label>
+  <p class="muted" style="font-size:.9rem">${L('المنبه بيرن على تابلت الولد طول ما التطبيق مفتوح عليه، ومش بيرن لو كان علّم على المهمة خلاص.','Alarms ring on the child’s tablet while the app is open there, and stay quiet if the task is already ticked.')}</p>`}
+let alEdit={tid:'',aid:''};
+function editAlarm(tid,aid){const k=kidById(selKid)||S.kids[0],t0=tid?S.tasks.find(x=>x.id===tid):null,a=t0&&aid?(t0.alarms||[]).find(x=>x.id===aid):null;
+  const ts=S.tasks.filter(t=>t.kids.includes(k.id)||(t0&&t.id===t0.id)).sort((x,y)=>m(x.time)-m(y.time));
+  if(!ts.length){toast(L('مفيش مهام للولد ده','This child has no tasks'));return}
+  const cur=a||{at:'start',min:15,kids:[k.id],msg:''};alEdit={tid:tid||'',aid:aid||'',kids:cur.kids||[k.id]};
+  const sel='padding:10px;border-radius:12px;border:2px solid var(--line);background:var(--bg);width:100%';
+  openDlg(`<h2>⏰ ${a?L('تعديل المنبه','Edit alarm'):L('منبه جديد لـ','New alarm for ')+esc(k.name)}</h2>
+  <label class="f">${L('المهمة','Task')}<select id="aeT" onchange="aeKids();aeSync()" style="${sel}">${ts.map(t=>`<option value="${t.id}" ${t0&&t.id===t0.id?'selected':''}>${esc(t.emoji)} ${esc(t.title)} · ${fmt(t.time)}</option>`).join('')}</select></label>
+  <label class="f">${L('يرن إمتى؟','When does it ring?')}<select id="aeK" onchange="aeSync()" style="${sel}">${AL_KINDS.map(([v,ar,en])=>`<option value="${v}" ${cur.at===v?'selected':''}>${L(ar,en)}</option>`).join('')}</select></label>
+  <label class="f" id="aeMw">${L('كام دقيقة؟','How many minutes?')}<input id="aeM" type="number" min="0" value="${cur.min??15}" oninput="aeSync()"></label>
+  <label class="f" id="aeCw">${L('الساعة','Time')}<input id="aeC" type="time" value="${cur.time||''}" oninput="aeSync()"></label>
+  <label class="f">${L('الرسالة اللي هتظهر للولد','Message the child will see')}<input id="aeX" value="${esc(cur.msg||'')}" dir="auto" placeholder="${L('مثلاً: يلا الحق صلّي الظهر قبل العصر','e.g. Pray Dhuhr before Asr comes in')}"></label>
+  <div class="f">${L('لمين؟','For whom?')}<div class="checks" id="aeKids"></div></div>
+  <p class="card" id="aeHint" style="margin:6px 0 0;background:var(--bg)"></p>
+  <div class="row" style="margin-top:12px"><button class="btn" onclick="saveAlarm()">${L('حفظ','Save')}</button><button class="btn ghost" onclick="closeDlg()">${L('إلغاء','Cancel')}</button>${a?`<button class="btn bad" onclick="delAlarm()">${L('حذف','Delete')}</button>`:''}<button class="btn ghost" style="margin-inline-start:auto" onclick="alTest()">🔊 ${L('جرّب الصوت','Test sound')}</button></div>`);
+  aeKids();aeSync()}
+function aeKids(){const t=S.tasks.find(x=>x.id===document.getElementById('aeT').value);if(!t)return;
+  const box=document.getElementById('aeKids'),was=box.children.length?[...box.querySelectorAll('input:checked')].map(e=>e.value):alEdit.kids;
+  box.innerHTML=S.kids.filter(k=>t.kids.includes(k.id)).map(k=>`<label><input type="checkbox" class="aeKid" value="${k.id}" ${was.includes(k.id)?'checked':''}>${AV(k,'mini')} ${esc(k.name)}</label>`).join('');trDom(box)}
+function aeRead(){const t=S.tasks.find(x=>x.id===document.getElementById('aeT').value),at=document.getElementById('aeK').value,a={at};
+  if(at==='after'||at==='end'||at==='before')a.min=Math.max(0,parseInt(document.getElementById('aeM').value,10)||0);
+  if(at==='clock')a.time=document.getElementById('aeC').value||(t&&t.time);return{t,a}}
+function aeSync(){const{t,a}=aeRead();if(!t)return;const at=a.at;
+  document.getElementById('aeMw').style.display=at==='after'||at==='end'||at==='before'?'':'none';
+  document.getElementById('aeCw').style.display=at==='clock'?'':'none';
+  if(at==='clock'&&!document.getElementById('aeC').value){document.getElementById('aeC').value=t.time;a.time=t.time}
+  const en=m(t.time)+t.dur;
+  document.getElementById('aeHint').innerHTML=`🕒 ${L('ميعاد المهمة','Task time')} ${fmt(t.time)} ${L('لحد','to')} ${fmt(hm(en))}<br>⏰ <b>${L('المنبه هيرن الساعة','The alarm rings at')} ${fmt(hm(alAt(t,a,ymd(today()))))}</b> · ${t.days.length===7?L('كل يوم','every day'):t.days.map(d=>L(DAYS[d],DAYS_EN[d].slice(0,3))).join('، ')}`}
+function saveAlarm(){const{t,a}=aeRead();if(!t)return;
+  a.kids=[...document.querySelectorAll('.aeKid:checked')].map(e=>e.value);if(!a.kids.length){toast(L('اختار ولد على الأقل','Pick at least one child'));return}
+  const msg=document.getElementById('aeX').value.trim();if(msg)a.msg=msg;a.id=alEdit.aid||uid();
+  if(alEdit.aid){const old=S.tasks.find(x=>x.id===alEdit.tid);if(old)old.alarms=(old.alarms||[]).filter(x=>x.id!==alEdit.aid)}
+  t.alarms=[...(t.alarms||[]),a];save();closeDlg();render();toast(L('المنبه اتحفظ','Alarm saved'))}
+function delAlarm(){if(!confirm(L('تحذف المنبه ده؟','Delete this alarm?')))return;const old=S.tasks.find(x=>x.id===alEdit.tid);if(old)old.alarms=(old.alarms||[]).filter(x=>x.id!==alEdit.aid);save();closeDlg();render();toast(L('اتحذف','Deleted'))}
+function alTest(){alSound();setTimeout(alSound,1600);setTimeout(alSound,3200)}
+
 /* ---------- pin ---------- */
 function vPin(){
   const keys=[1,2,3,4,5,6,7,8,9,'⌫',0,'✓'];
@@ -729,11 +858,11 @@ function pinKey(x){if(x==='⌫')pinBuf=pinBuf.slice(0,-1);else if(x==='✓'){}el
   if(pinBuf.length===4){if(pinBuf===S.pin){pinBuf='';if(view.arg==='setup'){setDevice('');go('setup');return}go('parent','ok');return}pinBuf='';toast('الرقم غلط')}render()}
 
 /* ---------- parent ---------- */
-const TABS=[['ok','الموافقات'],['school','المدرسة 📚'],['chat','الرسايل'],['beh','ثواب وعقاب'],['tasks','المهام'],['week','خطة الأسبوع'],['rw','المكافآت'],['rep','التقرير'],['set','الإعدادات']];
+const TABS=[['ok','الموافقات'],['school','المدرسة 📚'],['alarm','المنبهات ⏰'],['chat','الرسايل'],['beh','ثواب وعقاب'],['tasks','المهام'],['week','خطة الأسبوع'],['rw','المكافآت'],['rep','التقرير'],['set','الإعدادات']];
 function vParent(tab){
-  const pc=pendingTasks().length+pendingReqs().length+pendingSch().length;
+  const pc=pendingTasks().length+pendingReqs().length+pendingSch().length+reviewList().length;
   const tabs=TABS.map(([k,l])=>`<button class="tab" aria-current="${k===tab}" onclick="go('parent','${k}')">${l}${k==='ok'&&pc?`<span class="badge">${pc}</span>`:''}${k==='chat'&&unreadP()?`<span class="badge">${unreadP()}</span>`:''}</button>`).join('');
-  const body={ok:pOk,school:pSchool,chat:pChat,beh:pBeh,tasks:pTasks,week:pWeek,rw:pRw,rep:pRep,set:pSet}[tab]();
+  const body={ok:pOk,school:pSchool,alarm:pAlarms,chat:pChat,beh:pBeh,tasks:pTasks,week:pWeek,rw:pRw,rep:pRep,set:pSet}[tab]();
   return `<div class="top"><button class="back" onclick="go('home')">خروج</button><h2>لوحة الأهل</h2></div><nav class="tabs">${tabs}</nav>${body}`;
 }
 function kidTag(k){return `<b style="color:${k.color}">${AV(k,'mini')} ${esc(k.name)}</b>`}
@@ -742,11 +871,7 @@ function pOk(){
   const rh=S.tasks.filter(t=>t.rate&&t.days.includes(dw)).flatMap(t=>S.kids.filter(k=>t.kids.includes(k.id)).map(k=>{const s=st(k.id,t.id),nt=S.notes[today()+'|'+k.id+'|'+t.id];
     return `<div class="card"><div>${kidTag(k)} ${esc(t.emoji)} ${esc(t.title)}</div>${s==='done'?`<div class="muted">اتقيّم النهارده ${esc(nt||'')}</div>`:`<div class="stars">${[1,2,3,4,5].map(n=>`<button onclick="rateKid('${k.id}','${t.id}',${n})" aria-label="${n} من 5">⭐ ${n}<small>+${Math.round(P(t,k.id)*n/5)}</small></button>`).join('')}</div>`}</div>`})).join('');
   const mh=isMealDay()?S.kids.map(k=>{const p=weekPct(k),ok=p>=S.meal.pct,paid=S.meal.paid[today()+'|'+k.id];return `<div class="card row"><span class="grow">${kidTag(k)} <span class="muted">التزام الأسبوع ${p}%</span></span>${paid?'<span class="chip ok">استلم ✓</span>':ok?`<button class="btn good" onclick="mealPay('${k.id}')">اديته ${S.meal.amount} جنيه</button>`:'<span class="chip no">مش مستحق</span>'}</div>`}).join(''):'';
-  const ps=pendingSch().sort(schSort),ml=missedList(),ms=missedSch();
-  const mc=ml.map(({d,kid,t})=>{const k=kidById(kid),p=P(t,kid);return `<div class="card"><div>${kidTag(k)} ${esc(t.emoji)} ${esc(t.title)} <span class="muted">${d===today()?L('النهارده','today'):L(DAYS[ymd(d).getDay()],DAYS_EN[ymd(d).getDay()])} ${fmt(T(t,ymd(d)))}</span></div><div class="muted">${L(`فاتت واتخصم منه ${p} نقطة`,`Missed, ${p} pts deducted`)}</div>
-    <div class="row" style="margin-top:8px"><button class="btn good" onclick="lateOk('${d}','${kid}','${t.id}',1)">${L('اتعملت فعلاً','It was done')} +${2*p}</button><button class="btn ghost" onclick="lateOk('${d}','${kid}','${t.id}',0)">${L('رجّع الخصم بس','Refund only')} +${p}</button></div></div>`}).join('')
-   +ms.map(x=>{const k=kidById(x.kid),b=x.lost??x.pts;return `<div class="card"><div>${kidTag(k)} 📚 <span class="raw" dir="auto">${esc(x.title)}</span></div><div class="muted">${L(`فاتت واتخصم منه ${b} نقطة`,`Missed, ${b} pts deducted`)}</div>
-    <div class="row" style="margin-top:8px"><button class="btn good" onclick="schLateOk('${x.id}',1)">${L('اتعملت فعلاً','It was done')} +${b+(x.pts||0)}</button><button class="btn ghost" onclick="schLateOk('${x.id}',0)">${L('رجّع الخصم بس','Refund only')} +${b}</button></div></div>`}).join('');
+  const ps=pendingSch().sort(schSort),mc=reviewHTML(reviewList());
   if(!pt.length&&!pr.length&&!rh&&!mh&&!ps.length&&!mc)return '<div class="card muted">مفيش حاجة مستنية موافقتك دلوقتي.</div>';
   const sc=ps.map(x=>{const k=kidById(x.kid),cat=SCAT.find(s=>s[0]===x.cat)||SCAT[4],dt=schDayTxt(x);
     return `<div class="card"><div>${kidTag(k)} ${L('خلّص:','finished:')}${dt?` <span class="chip">${dt}</span>`:''}</div><div class="sch-ap"><span>${cat[4]}</span> <b class="raw" dir="auto">${esc(x.title)}</b></div>${schBtns(x.id,x)}</div>`}).join('');
@@ -754,7 +879,7 @@ function pOk(){
     <div class="row" style="margin-top:8px"><button class="btn good" onclick="okTask('${d}','${kid}','${t.id}',1)">${t.bonus?'حضر':'موافقة'} +${p}</button>${t.bonus?`<button class="btn good" onclick="okTask('${d}','${kid}','${t.id}',1,1)">حضر واتميز +${p+t.bonus}</button>`:`<button class="btn warn" onclick="okTask('${d}','${kid}','${t.id}',.5)">نص النقط</button>`}<button class="btn bad" onclick="noTask('${d}','${kid}','${t.id}')">لسه</button></div></div>`}).join('');
   const b=pr.map(q=>{const k=kidById(q.kid),r=S.rewards.find(x=>x.id===q.rid);if(!k||!r)return '';return `<div class="card"><div>${kidTag(k)} عايز: ${esc(r.emoji)} ${esc(r.title)} <span class="muted">(${r.num} نقطة، معاه ${k.points})</span></div>
     <div class="row" style="margin-top:8px"><button class="btn good" onclick="okReq('${q.id}')">موافقة</button><button class="btn bad" onclick="noReq('${q.id}')">مش دلوقتي</button></div></div>`}).join('');
-  return `<div class="list">${mh?'<h3 style="margin-top:0">🍔 وجبة المدرسة النهارده</h3>'+mh:''}${rh?'<h3 style="margin-top:0">تقييم النهارده (للأب والأم بس)</h3>'+rh:''}${pt.length?'<h3>مهام خلصت</h3>'+a:''}${ps.length?`<h3>📚 ${L('مهام المدرسة','School tasks')}</h3>`+sc:''}${pr.length?'<h3>طلبات مكافآت</h3>'+b:''}${mc?`<h3>⌛ ${L('فاتت واتخصمت (آخر يومين)','Missed & deducted (last 2 days)')}</h3><p class="muted" style="margin-top:-6px">${L('لو الولد عملها ونسي يعلّم، أو ليه عذر، تقدر ترجّع له النقط من هنا.','If he did it but forgot to tick, or had an excuse, you can give the points back here.')}</p>`+mc:''}</div>`;
+  return `<div class="list">${mh?'<h3 style="margin-top:0">🍔 وجبة المدرسة النهارده</h3>'+mh:''}${rh?'<h3 style="margin-top:0">تقييم النهارده (للأب والأم بس)</h3>'+rh:''}${pt.length?'<h3>مهام خلصت</h3>'+a:''}${ps.length?`<h3>📚 ${L('مهام المدرسة','School tasks')}</h3>`+sc:''}${pr.length?'<h3>طلبات مكافآت</h3>'+b:''}${mc}</div>`;
 }
 function okTask(d,kid,tid,f,bon){const t=S.tasks.find(x=>x.id===tid);setSt(kid,tid,'done',d);const fs=fastOf(d,kid,t),p=Math.round(P(t,kid)*f)+(bon?t.bonus:0)+(fs?t.speedPts:0);addPts(kid,p,(f<1?'نص نقط: ':'')+t.title+(bon?' (تميّز)':'')+(fs?' ⚡':''));save();render();toast('+'+p+' نقطة')}
 function rateKid(kid,tid,n){const t=S.tasks.find(x=>x.id===tid);setSt(kid,tid,'done');S.notes[today()+'|'+kid+'|'+tid]='⭐'.repeat(n);const p=Math.round(P(t,kid)*n/5);addPts(kid,p,t.title+' ('+n+'/5)');save();render();toast('+'+p+' نقطة')}
@@ -765,7 +890,7 @@ function pWeek(){
   return `<div class="kpick">${chips}</div><button class="btn" style="width:100%;padding:12px;margin:12px 0" onclick="editTask('',${selDay})">+ نشاط ليوم ${DAYS[selDay]}</button><div class="list">${rows||'<div class="card muted">مفيش أنشطة اليوم ده.</div>'}</div>`;
 }
 function noTask(d,kid,tid){setSt(kid,tid,'rejected',d);save();render()}
-function okReq(id){const q=S.requests.find(x=>x.id===id),k=kidById(q.kid),r=S.rewards.find(x=>x.id===q.rid);if(k.points<r.num){toast('النقط مش كفاية');return}addPts(k.id,-r.num,'مكافأة: '+r.title);q.status='ok';save();render();toast('اتخصم '+r.num+' نقطة')}
+function okReq(id){const q=S.requests.find(x=>x.id===id),k=kidById(q.kid),r=S.rewards.find(x=>x.id===q.rid);if(!q||!k||!r)return;const c=q.cost??r.num;if(k.points<c){toast('النقط مش كفاية');return}addPts(k.id,-c,'مكافأة: '+r.title);q.status='ok';save();render();toast('اتخصم '+c+' نقطة')}
 function noReq(id){S.requests.find(x=>x.id===id).status='no';save();render()}
 function pChat(){
   const pick=S.kids.map(k=>{const u=(S.chat[k.id]||[]).filter(x=>x.from==='k'&&!x.seen).length;return `<button style="--c:${k.color}" aria-pressed="${k.id===selKid}" onclick="selKid='${k.id}';render()">${AV(k,'mini')} ${esc(k.name)}${u?`<span class="badge">${u}</span>`:''}</button>`}).join('');
@@ -816,7 +941,7 @@ function saveTask(id){
   const points={};S.kids.forEach(k=>points[k.id]=Math.max(0,+v('fp_'+k.id)||0));
   const time=v('fm')||'16:00',times={};for(let i=0;i<7;i++){const x=v('ftm'+i);if(x&&x!==time&&days.includes(i))times[i]=x}
   const d={emoji:v('fe')||'⭐',title,time,times,dur:Math.max(1,+v('fd')||15),points,bonus:Math.max(0,+v('fb')||0),speed:Math.max(0,+v('fs')||0),speedPts:Math.max(0,+v('fsp')||0),rate:document.getElementById('fq').checked,read:v('fr'),kids,days};
-  if(id)Object.assign(S.tasks.find(x=>x.id===id),d);else S.tasks.push({id:uid(),...d});
+  if(id)Object.assign(S.tasks.find(x=>x.id===id),d);else S.tasks.push({id:uid(),ct:Date.now(),...d});
   save();closeDlg();render();
 }
 function delTask(id){if(!confirm(tr('تحذف المهمة دي؟')))return;S.tasks=S.tasks.filter(x=>x.id!==id);save();closeDlg();render()}
@@ -903,9 +1028,9 @@ view.name==='kid'?vKid(view.arg):view.name==='school'?vSchool(view.arg):view.nam
   trDom(app);updTimers();document.querySelectorAll('.chat').forEach(e=>e.scrollTop=e.scrollHeight);
 }
 function tick(){
-  if(!S)return;expireTasks();
+  if(!S)return;alarmCheck();keepAwake();
   if(view.name==='kid'){const k=kidById(view.arg),n=nowM(),key=today();
-    kidTasks(k).forEach(t=>{if(st(k.id,t.id)||t.rate||!P(t,k.id)&&!t.title.includes('تمرين'))return;const tm=m(T(t));
+    kidTasks(k).forEach(t=>{if(st(k.id,t.id)||t.rate||t.alarms?.length||!P(t,k.id)&&!t.title.includes('تمرين'))return;const tm=m(T(t));
       [[tm-5,'pre','⏰ بعد ٥ دقايق: '],[tm,'now','⏰ دلوقتي وقت: ']].forEach(([w,tag,txt])=>{const id=key+k.id+t.id+tag;
         if(n>=w&&n<w+3&&!NOTI[id]){NOTI[id]=1;saveNoti();remind(txt+t.emoji+' '+t.title)}})});
     checkMsgs(k.id);if(!dlg.open&&document.activeElement?.tagName!=='INPUT')render()}
@@ -918,7 +1043,7 @@ async function initRemote(){try{S=seed();prepare();const cur=clean(S),ph=cur.pho
   await fdb.runTransaction(async tx=>{const x=await tx.get(mainRef);if(!x.exists){tx.set(mainRef,cur);tx.set(photoRef,ph)}})}catch(e){onErr(e)}}
 function onMain(snap){
   if(!snap.exists){if(!snap.metadata.fromCache)initRemote();return}
-  S=snap.data();S.photos=lastPhotos;base=clean(S);prepare();ready=true;save();expireTasks();
+  S=snap.data();S.photos=lastPhotos;base=clean(S);prepare();ready=true;if(!snap.metadata.fromCache)save();
   if(['loading','login','err'].includes(view.name))view={name:'home'};
   if(view.name==='kid')checkMsgs(view.arg);
   softRender();
