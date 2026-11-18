@@ -103,6 +103,7 @@ h3{font-size:1.2rem;margin:26px 0 10px}
 .beh{border:2px solid var(--line);background:var(--surface);border-radius:16px;padding:10px;text-align:center;font-weight:600}
 .beh b{display:block;font-size:1.1rem}
 .beh.plus b{color:var(--good)} .beh.minus b{color:var(--bad)}
+.beh.edit{border-style:dashed;border-color:var(--accent)}
 input[type=text],input[type=number],input[type=time],input[type=password],input:not([type]){width:100%;padding:10px 12px;border-radius:12px;border:2px solid var(--line);background:var(--bg)}
 label.f{display:grid;gap:4px;font-weight:600;margin-bottom:10px}
 .checks{display:flex;flex-wrap:wrap;gap:6px}
@@ -932,14 +933,20 @@ const QUICK=['يلا على الواجب 📚','وقت الصلاة 🕌','رت�
 function pBeh(){
   const pick=S.kids.map(k=>`<button style="--c:${k.color}" aria-pressed="${k.id===selKid}" onclick="selKid='${k.id}';render()">${AV(k,'mini')} ${esc(k.name)}</button>`).join('');
   const k=kidById(selKid)||S.kids[0];
-  const bs=S.behaviors.map(b=>`<button class="beh ${b.num>0?'plus':'minus'}" onclick="applyBeh('${b.id}')"><span style="font-size:1.6rem">${esc(b.emoji)}</span><br>${esc(b.title)}<b>${b.num>0?'+':''}${b.num}</b></button>`).join('');
+  const bs=S.behaviors.map(b=>`<button class="beh ${b.num>0?'plus':'minus'}${behEdit?' edit':''}" onclick="${behEdit?`editItem('behaviors','${b.id}')`:`applyBeh('${b.id}')`}"><span style="font-size:1.6rem">${esc(b.emoji)}</span><br>${esc(b.title)}<b>${b.num>0?'+':''}${b.num}</b></button>`).join('');
   const hist=S.history.filter(h=>h.kid===k.id).slice(-12).reverse().map(h=>`<div class="row"><span class="grow">${esc(h.reason)}</span><span class="chip ${h.pts>=0?'ok':'no'}">${h.pts>0?'+':''}${h.pts}</span></div>`).join('');
-  return `<div class="kpick">${pick}</div><p class="muted">${esc(k.name)} معاه ${k.points} نقطة. اختار السلوك:</p><div class="bgrid">${bs}</div>
-  <h3>سلوك تاني</h3><div class="card"><div class="row"><input id="cr" class="grow" placeholder="السبب"><input id="cp" type="number" placeholder="+10 أو -5" style="width:110px"><button class="btn" onclick="customBeh()">سجّل</button></div></div>
+  return `<div class="kpick">${pick}</div><p class="muted">${behEdit?`<b>✏️ ${L('دوس على أي سلوك عشان تعدّله أو تحذفه','Tap any behavior to edit or delete it')}</b>`:`${esc(k.name)} معاه ${k.points} نقطة. اختار السلوك:`}</p><div class="bgrid">${bs}</div>
+  <div class="row" style="margin-top:10px;gap:8px"><button class="btn grow" style="white-space:normal" onclick="editItem('behaviors')">+ ${L('سلوك جديد','New behavior')}</button><button class="btn ${behEdit?'good':'ghost'} grow" style="white-space:normal" onclick="behEdit=!behEdit;render()">${behEdit?L('✓ خلصت التعديل','✓ Done editing'):L('✏️ تعديل القائمة','✏️ Edit list')}</button></div>
+  <h3>سلوك تاني</h3><div class="card"><div class="row"><input id="cr" class="grow" placeholder="السبب"><input id="cp" type="number" placeholder="${L('+10 أو -5','+10 or -5')}" style="width:110px"><button class="btn" onclick="customBeh()">سجّل</button></div>
+  <label class="row" style="margin-top:8px;gap:8px"><input type="checkbox" id="csv"><span class="grow">${L('واحفظه في القائمة فوق عشان يفضل موجود بعد كده','Also save it to the list above for next time')}</span></label></div>
   <h3>آخر حاجات لـ${esc(k.name)}</h3><div class="card list">${hist||'<span class="muted">لسه مفيش</span>'}</div>`;
 }
 function applyBeh(id){const b=S.behaviors.find(x=>x.id===id);addPts(selKid,b.num,b.title);save();render();toast((b.num>0?'+':'')+b.num+L(' لـ',' for ')+kidById(selKid).name)}
-function customBeh(){const r=document.getElementById('cr').value.trim(),p=parseInt(document.getElementById('cp').value,10);if(!r||!p){toast('اكتب السبب والنقط');return}addPts(selKid,p,r);save();render()}
+let behEdit=false;
+function customBeh(){const r=document.getElementById('cr').value.trim(),p=parseInt(document.getElementById('cp').value,10);if(!r||!p){toast('اكتب السبب والنقط');return}
+  const keep=document.getElementById('csv')?.checked&&!S.behaviors.some(b=>b.title===r);
+  if(keep)S.behaviors.push({id:uid(),emoji:p>0?'⭐':'⚠️',title:r,num:p});
+  addPts(selKid,p,r);save();render();toast((p>0?'+':'')+p+L(' لـ',' for ')+kidById(selKid).name+(keep?L(' · واتحفظ في القائمة',' · saved to the list'):''))}
 function ptsText(t){const vals=S.kids.map(k=>P(t,k.id));return vals.every(v=>v===vals[0])?vals[0]+' نقطة':S.kids.map(k=>esc(k.name)+' '+P(t,k.id)).join('، ')}
 function pTasks(){
   const rows=[...S.tasks].sort((a,b)=>m(a.time)-m(b.time)).map(t=>`<div class="card row"><span class="grow"><b>${esc(t.emoji)} ${esc(t.title)}</b><br><span class="muted">${fmt(t.time)}، ${t.dur} دقيقة، ${ptsText(t)}${t.bonus?'، تميّز +'+t.bonus:''}${t.speed?'، ⚡ '+t.speed+' دقيقة':''}${t.rate?'، ⭐ تقييم الأهل':''}${Object.keys(t.times||{}).length?'، مواعيد مختلفة':''}<br>${t.kids.map(id=>kidById(id)?AV(kidById(id),'mini'):'').join(' ')} ${t.days.length===7?'كل يوم':t.days.map(d=>DAYS[d]).join('، ')}</span></span>
