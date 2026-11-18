@@ -511,7 +511,7 @@ function pendingTasks(){const o=[];for(const d in S.log)for(const kid in S.log[d
 const pendingReqs=()=>S.requests.filter(r=>r.status==='pending');
 
 let view={name:'home'},selDay=new Date().getDay(),selKid='k1',pinBuf='',audio;
-function go(name,arg){view={name,arg};render();scrollTo(0,0)}
+function go(name,arg){if(name==='home'||name==='parent'||((name==='kid'||name==='school')&&arg!==kOpen))kOpen=null;view={name,arg};render();scrollTo(0,0)}
 function toast(t){const e=document.getElementById('toast');e.textContent=tr(t);e.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>e.classList.remove('show'),2400)}
 function beep(){try{audio??=new (window.AudioContext||window.webkitAudioContext)();[0,.25,.5].forEach(s=>{const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=880;g.gain.setValueAtTime(.2,audio.currentTime+s);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+s+.2);o.connect(g).connect(audio.destination);o.start(audio.currentTime+s);o.stop(audio.currentTime+s+.22)})}catch(e){}}
 function remind(text){const b=document.getElementById('banner');b.textContent=tr(text);b.classList.add('show');beep();navigator.vibrate?.([200,100,200]);clearTimeout(remind.h);remind.h=setTimeout(()=>b.classList.remove('show'),9000)}
@@ -549,7 +549,7 @@ function vHome(){
   ${arc(null)}<section class="kids">${kids}</section>
   <button class="parentBtn" onclick="pinBuf='';go('pin')">دخول الأهل${pc?`<span class="badge">${pc}</span>`:''}</button>`;
 }
-function enterKid(id){try{audio??=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}go('kid',id);checkMsgs(id)}
+function enterKid(id){try{audio??=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}go('kid',id);if(!needLock(id))checkMsgs(id)}
 const unreadK=id=>(S.chat[id]||[]).filter(x=>x.from==='p'&&!x.seen).length;
 const unreadP=()=>S.kids.reduce((s,k)=>s+(S.chat[k.id]||[]).filter(x=>x.from==='k'&&!x.seen).length,0);
 function checkMsgs(kid){const un=(S.chat[kid]||[]).filter(x=>x.from==='p'&&!x.seen);if(!un.length)return;const r=un.filter(x=>x.remind).pop();if(r)remind('🔔 '+(r.by?r.by+': ':'')+r.text);un.forEach(x=>x.seen=true);save()}
@@ -603,7 +603,7 @@ function vKid(id){
   const earned=mine.filter(h=>h.pts>0&&wk.includes(h.d)).reduce((s,h)=>s+h.pts,0);
   const spent=mine.filter(h=>h.pts<0&&h.reason.startsWith('مكافأة')).reduce((s,h)=>s-h.pts,0);
   const moves=mine.slice(-8).reverse().map(h=>`<div class="row"><span class="grow">${esc(h.reason)}</span><span class="chip ${h.pts>=0?'ok':'no'}">${h.pts>0?'+':''}${h.pts}</span></div>`).join('');
-  return `<div style="--c:${k.color}"><div class="top">${DEV&&DEV!=='p'?`<button class="back" onclick="pinBuf='';go('pin','setup')" aria-label="تغيير الجهاز">🔒</button><button class="back" onclick="pinBuf='';go('pin')">لوحة الأهل</button>`:`<button class="back" onclick="go('home')">رجوع</button>`}</div>
+  return `<div style="--c:${k.color}"><div class="top">${DEV&&DEV!=='p'?`<button class="back" onclick="pinBuf='';go('pin','setup')" aria-label="تغيير الجهاز">⚙️</button><button class="back" onclick="pinBuf='';go('pin')">لوحة الأهل</button>`:`<button class="back" onclick="go('home')">رجوع</button>`}${hasKPin(k.id)?`<button class="back" style="margin-inline-start:auto" onclick="lockKid()">🔒 ${L('قفل','Lock')}</button>`:''}</div>
   <div class="who">${AV(k,'av')}<div><h2>أهلاً يا ${esc(k.name)}</h2><div class="stats"><span>${R.r[1]} ${R.r[2]}</span><span>🔥 ${streak(k)} يوم ورا بعض</span></div></div></div>
   ${scoreCard(k)}${mealCard(k)}${arc(k)}${now}${schCard(k)}<h3>يومك النهارده</h3><ol class="tasks">${rows||'<li>مفيش مهام النهارده</li>'}</ol>
   <details class="card" style="margin-top:20px"><summary><b>خطة الأسبوع 📅</b></summary>${[0,1,2,3,4,5,6].map(o=>{const d=new Date();d.setDate(d.getDate()+o);const ts=kidTasks(k,d).filter(t=>t.days.length<7);return `<div style="margin-top:10px"><b>${o===0?'النهارده':o===1?'بكرة':DAYS[d.getDay()]}</b><div class="muted">${ts.map(t=>esc(t.emoji)+' '+esc(t.title)+' '+fmt(T(t,d))).join('<br>')||'يوم عادي'}</div></div>`}).join('')}</details>
@@ -778,13 +778,13 @@ function alSound(){try{if(navigator.audioSession)navigator.audioSession.type='pl
     [0,.18,.36,.54].forEach((s,i)=>{const o=audio.createOscillator(),g=audio.createGain();o.type='square';o.frequency.value=i%2?660:990;g.gain.setValueAtTime(.25,audio.currentTime+s);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+s+.16);o.connect(g).connect(audio.destination);o.start(audio.currentTime+s);o.stop(audio.currentTime+s+.17)})}catch(e){}
   navigator.vibrate?.([400,150,400])}
 function ring(t,a,kid,test){if(dlg.open)closeDlg();const el=document.getElementById('alarm'),k=kidById(kid),n=nowM(),started=n>=m(T(t)),s=st(kid,t.id);
-  const act=!test&&started&&!s&&P(t,kid)>0&&!t.rate?(t.read?`openRead('${kid}','${t.id}')`:t.speed?`startSpeed('${kid}','${t.id}')`:`markDone('${kid}','${t.id}')`):'';
+  const act=!test&&!needLock(kid)&&started&&!s&&P(t,kid)>0&&!t.rate?(t.read?`openRead('${kid}','${t.id}')`:t.speed?`startSpeed('${kid}','${t.id}')`:`markDone('${kid}','${t.id}')`):'';
   el.innerHTML=`<div class="al-box" style="--c:${k?.color||'var(--accent)'}"><div class="al-e">${esc(t.emoji)}</div><div class="al-n">${k?esc(k.name):''}</div>
     <div class="al-t">${esc(a.msg||alText(t,a))}</div>${a.msg?`<div class="al-s">${esc(t.emoji+' '+t.title)}</div>`:''}
     <div class="al-b">${act?`<button class="btn good" onclick="alOff();${act}">${L('خلصتها ✓','Done ✓')}</button>`:''}<button class="btn" onclick="alOff()">${L('تمام، فهمت','OK, got it')}</button></div></div>`;
   trDom(el);el.hidden=false;alSound();clearInterval(alLoop);clearTimeout(alStop);alLoop=setInterval(alSound,1600);alStop=setTimeout(()=>clearInterval(alLoop),test?6000:120000)}
 function alOff(){clearInterval(alLoop);clearTimeout(alStop);document.getElementById('alarm').hidden=true}
-function alarmCheck(){if(!S||!DEV||DEV==='p'||!kidById(DEV)||!['kid','school','home'].includes(view.name))return;
+function alarmCheck(){if(!S||!DEV||DEV==='p'||!kidById(DEV)||!['kid','school','home','kpin'].includes(view.name))return;
   if(!document.getElementById('alarm').hidden)return;const n=nowM(),key=today();
   for(const {t,a,at} of dueAlarms(DEV)){const id=key+'|al|'+a.id+'|'+DEV;if(NOTI[id]||n<at||n>=at+5)continue;NOTI[id]=1;saveNoti();
     const s=st(DEV,t.id);if(s==='done'||s==='pending'||s==='missed')continue;ring(t,a,DEV);break}}
@@ -845,6 +845,33 @@ function saveAlarm(){const{t,a}=aeRead();if(!t)return;
   t.alarms=[...(t.alarms||[]),a];save();closeDlg();render();toast(L('المنبه اتحفظ','Alarm saved'))}
 function delAlarm(){if(!confirm(L('تحذف المنبه ده؟','Delete this alarm?')))return;const old=S.tasks.find(x=>x.id===alEdit.tid);if(old)old.alarms=(old.alarms||[]).filter(x=>x.id!==alEdit.aid);save();closeDlg();render();toast(L('اتحذف','Deleted'))}
 function alTest(){alSound();setTimeout(alSound,1600);setTimeout(alSound,3200)}
+
+/* ---------- a secret number for each child ----------
+   A child's page asks for that child's number when the app opens, when it comes back
+   from the background, after 5 minutes without a touch, or when he taps Lock.
+   The parents' number opens any child. No number set = the page opens as before. */
+let kOpen=null,kpBuf='',kpFails=0,kpWait=0,lastAct=Date.now(),hidAt=0;
+const hasKPin=kid=>!!S?.kidPins?.[kid];
+const needLock=kid=>hasKPin(kid)&&kOpen!==kid;
+function lockKid(){kOpen=null;kpBuf='';render()}
+function vKPin(id){const k=kidById(id);if(!k)return vHome();const keys=[1,2,3,4,5,6,7,8,9,'⌫',0,'✓'],own=DEV&&DEV!=='p',wait=kpWait>Date.now();
+  return `<div style="--c:${k.color}"><div class="top">${own?`<button class="back" onclick="pinBuf='';go('pin')">${L('لوحة الأهل','Parents')}</button>`:`<button class="back" onclick="go('home')">${L('رجوع','Back')}</button>`}</div>
+  <div class="pin"><div class="who" style="flex-direction:column;gap:6px">${AV(k,'av')}<h2>${L('أهلاً يا ','Hi ')}${esc(k.name)}</h2></div><p class="muted" style="margin:0">${L('اكتب رقمك السري','Enter your secret number')}</p>
+  <div class="dots">${[0,1,2,3].map(i=>`<i class="${i<kpBuf.length?'on':''}"></i>`).join('')}</div>
+  ${wait?`<div class="card muted">${L('محاولات كتير غلط، استنى شوية وجرّب تاني','Too many wrong tries, wait a bit and try again')}</div>`:`<div class="pad" dir="ltr">${keys.map(x=>`<button onclick="kpKey('${x}')" aria-label="${x}">${x}</button>`).join('')}</div>`}
+  <p class="muted" style="font-size:.9rem">${L('بابا أو ماما يقدروا يفتحوا برقمهم','Dad or Mom can open it with their number')}</p></div></div>`}
+function kpKey(x){if(kpWait>Date.now())return;const id=view.arg;if(x==='⌫')kpBuf=kpBuf.slice(0,-1);else if(x!=='✓'&&kpBuf.length<4)kpBuf+=x;
+  if(kpBuf.length===4){const ok=kpBuf===S.kidPins?.[id]||kpBuf===S.pin;kpBuf='';
+    if(ok){kpFails=0;kOpen=id;lastAct=Date.now();const nx=view.next||{name:'kid',arg:id};view=nx;render();scrollTo(0,0);checkMsgs(id);return}
+    kpFails++;toast(L('الرقم غلط','Wrong number'));if(kpFails>=5){kpFails=0;kpWait=Date.now()+30000;setTimeout(render,30500)}}
+  render()}
+function saveKPin(kid){const v=document.getElementById('kp_'+kid).value.trim();if(!/^\d{4}$/.test(v)){toast(L('لازم ٤ أرقام','Must be 4 digits'));return}
+  S.kidPins??={};S.kidPins[kid]=v;save();render();toast(L('الرقم السري اتحفظ لـ','Number saved for ')+kidById(kid).name)}
+function delKPin(kid){if(!confirm(L('تشيل الرقم السري؟ الصفحة هتفتح من غير رقم.','Remove the number? The page will open without one.')))return;delete S.kidPins[kid];save();render()}
+document.addEventListener('pointerdown',()=>{lastAct=Date.now()});
+document.addEventListener('keydown',()=>{lastAct=Date.now()});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')hidAt=Date.now();else if(hidAt&&Date.now()-hidAt>30000&&kOpen){kOpen=null;render()}});
+setInterval(()=>{if(kOpen&&Date.now()-lastAct>5*60000){kOpen=null;if(['kid','school'].includes(view.name))render()}},15000);
 
 /* ---------- pin ---------- */
 function vPin(){
@@ -980,7 +1007,9 @@ function pSet(){
   const kids=S.kids.map((k,i)=>`<div class="card" style="margin-bottom:8px"><div class="row"><label class="f" style="width:70px">رمز<input id="sa${i}" value="${esc(k.avatar)}" maxlength="4"></label><label class="f grow">الاسم<input id="sn${i}" value="${esc(k.name)}"></label><label class="f" style="width:80px">السن<input id="sg${i}" type="number" value="${k.age}"></label></div>
   <div class="row">${AV(k,'av')}<label class="btn ghost">📷 تغيير الصورة<input type="file" accept="image/*" hidden onchange="setPhoto(${i},this)"></label>${S.photos?.[k.id]?`<button class="btn ghost" onclick="delPhoto(${i})">شيل الصورة</button>`:''}</div></div>`).join('');
   return `<h3 style="margin-top:0" class="raw">اللغة / Language</h3><div class="card row"><button class="btn raw" onclick="setLang()">${L('English','عربي')}</button></div><h3>الأولاد</h3>${kids}<button class="btn" onclick="saveKids()">حفظ الأسماء</button>
-  <h3>الرقم السري</h3><div class="card row"><input id="np" type="password" inputmode="numeric" maxlength="4" class="grow" placeholder="٤ أرقام جديدة"><button class="btn" onclick="savePin()">تغيير</button></div>
+  <h3>${L('الرقم السري لكل ولد','Each child’s secret number')}</h3><p class="muted" style="margin-top:-6px">${L('عشان محدش يدخل على صفحة أخوه. رقم الأهل بيفتح أي ولد. للتغيير اكتب رقم جديد ودوس حفظ. لو مفيش رقم، الصفحة بتفتح من غير رقم.','So no child opens a sibling’s page. The parents’ number opens any child. To change it, type a new one and Save. No number = opens freely.')}</p>
+  <div class="list">${S.kids.map(k=>`<div class="card row">${AV(k,'mini')}<b style="min-width:4em">${esc(k.name)}</b><input id="kp_${k.id}" type="password" inputmode="numeric" maxlength="4" class="grow" style="min-width:90px" placeholder="${hasKPin(k.id)?L('متعمل ✓','Set ✓'):L('٤ أرقام','4 digits')}"><button class="btn" onclick="saveKPin('${k.id}')">${L('حفظ','Save')}</button>${hasKPin(k.id)?`<button class="btn ghost" onclick="delKPin('${k.id}')">${L('شيل','Remove')}</button>`:''}</div>`).join('')}</div>
+  <h3>${L('الرقم السري للأهل','Parents’ secret number')}</h3><div class="card row"><input id="np" type="password" inputmode="numeric" maxlength="4" class="grow" placeholder="٤ أرقام جديدة"><button class="btn" onclick="savePin()">تغيير</button></div>
   <h3>الجهاز ده</h3><div class="card row"><span class="grow muted">${DEV==='p'?'جهاز الأهل ('+esc(SENDER)+')':'جهاز '+esc(kidById(DEV)?.name||'')}</span><button class="btn ghost" onclick="setDevice('');go('setup')">تغيير</button><button class="btn bad" onclick="if(confirm(tr('تخرج من حساب العيلة على الجهاز ده؟')))logout()">خروج من الحساب</button></div>
   <h3>بداية من جديد</h3><div class="card row"><span class="grow muted">يمسح كل النقط والسجل ويرجّع المهام الأصلية.</span><button class="btn bad" onclick="resetAll()">مسح الكل</button></div>`;
 }
@@ -1023,8 +1052,9 @@ function render(){
   if(!S||['login','loading','err'].includes(view.name)){app.innerHTML=vBoot();trDom(app);return}
   if(!DEV&&view.name!=='setup')view={name:'setup'};
   if(view.name==='home'&&DEV&&DEV!=='p'&&kidById(DEV))view={name:'kid',arg:DEV};
+  if((view.name==='kid'||view.name==='school')&&needLock(view.arg)){kpBuf='';view={name:'kpin',arg:view.arg,next:{name:view.name,arg:view.arg}}}
   avCSS();app.innerHTML=view.name==='setup'?vSetup():
-view.name==='kid'?vKid(view.arg):view.name==='school'?vSchool(view.arg):view.name==='pin'?vPin():view.name==='parent'?vParent(view.arg||'ok'):vHome();
+view.name==='kid'?vKid(view.arg):view.name==='school'?vSchool(view.arg):view.name==='kpin'?vKPin(view.arg):view.name==='pin'?vPin():view.name==='parent'?vParent(view.arg||'ok'):vHome();
   trDom(app);updTimers();document.querySelectorAll('.chat').forEach(e=>e.scrollTop=e.scrollHeight);
 }
 function tick(){
